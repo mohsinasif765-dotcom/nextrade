@@ -1,0 +1,193 @@
+"use client";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Search, Users, UserMinus, UserCheck, 
+  ShieldCheck, Wallet, Mail, Loader2, 
+  SearchX, MoreVertical, Ban, CheckCircle
+} from "lucide-react";
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+type UserTab = 'active' | 'blocked';
+
+export default function AdminUsersPage() {
+  const [activeTab, setActiveTab] = useState<UserTab>('active');
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Fetch Users using Secure RPC
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      
+      const { data, error } = await supabase.rpc('admin_get_users', {
+        tab_status: activeTab === 'active',
+        search_text: searchQuery || ''
+      });
+
+      if (!error) {
+        setUsers(data || []);
+      } else {
+        console.error("RPC Error:", error.message);
+      }
+      
+      setLoading(false);
+    };
+
+    const delayDebounceFn = setTimeout(() => {
+      fetchUsers();
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [activeTab, searchQuery]);
+
+  // Toggle User Status using Secure RPC
+  const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
+    setActionLoading(userId);
+    
+    const { error } = await supabase.rpc('admin_toggle_user', {
+      target_user_id: userId,
+      new_status: !currentStatus
+    });
+
+    if (!error) {
+      // Remove user from current list view for smooth transition
+      setUsers(prev => prev.filter(u => u.id !== userId));
+    } else {
+      alert("Error updating status: " + error.message);
+    }
+    setActionLoading(null);
+  };
+
+  return (
+    <div className="min-h-screen p-6 pb-32">
+      {/* Header & Search */}
+      <div className="space-y-6 mb-8">
+        <div>
+          <h1 className="text-2xl font-black uppercase tracking-tighter">User Directory</h1>
+          <p className="text-[10px] text-yellow-500 font-bold uppercase tracking-[0.3em]">Total Registry: {users.length}</p>
+        </div>
+
+        <div className="relative group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-yellow-500 transition-colors" size={18} />
+          <input 
+            type="text"
+            placeholder="Search by name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-14 bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-4 text-sm outline-none focus:border-yellow-500/50 transition-all font-medium"
+          />
+        </div>
+      </div>
+
+      {/* Tabs - Gold Theme */}
+      <div className="flex p-1.5 bg-slate-950/80 border border-slate-800 rounded-full mb-8">
+        {(['active', 'blocked'] as UserTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all relative ${
+              activeTab === tab ? "text-slate-950" : "text-slate-500"
+            }`}
+          >
+            <span className="relative z-10">{tab} Database</span>
+            {activeTab === tab && (
+              <motion.div 
+                layoutId="adminUserTab" 
+                className="absolute inset-0 bg-yellow-500 rounded-full shadow-lg shadow-yellow-500/20" 
+              />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Users List */}
+      <div className="space-y-4">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 opacity-30">
+            <Loader2 className="animate-spin text-yellow-500 mb-4" size={40} />
+            <p className="text-[10px] font-bold uppercase tracking-widest">Accessing Secure Records...</p>
+          </div>
+        ) : users.length === 0 ? (
+          <div className="text-center py-20 bg-slate-900/40 rounded-[40px] border border-dashed border-slate-800">
+            <SearchX className="mx-auto mb-4 text-slate-700" size={48} />
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">No results in {activeTab} vault</p>
+          </div>
+        ) : (
+          <AnimatePresence>
+            {users.map((user) => (
+              <motion.div
+                key={user.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-slate-900/60 border border-slate-800 p-5 rounded-[30px] space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center border border-slate-700 shadow-inner">
+                      {user.profile_image_url ? (
+                        <img src={user.profile_image_url} className="w-full h-full object-cover rounded-2xl" />
+                      ) : (
+                        <Users className="text-slate-500" size={20} />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-100 truncate w-32">{user.full_name || 'Anonymous'}</h3>
+                      <p className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                        <Mail size={10} /> {user.email}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Status Badges */}
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${user.kyc_status === 'verified' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                      {user.kyc_status}
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${user.is_active ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'}`} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800/50 flex items-center gap-3">
+                    <Wallet size={14} className="text-yellow-500" />
+                    <div>
+                      <p className="text-[8px] text-slate-600 font-black uppercase tracking-tighter">Net Balance</p>
+                      <p className="text-xs font-bold font-mono text-emerald-400">${Number(user.main_balance).toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    disabled={actionLoading === user.id}
+                    onClick={() => toggleUserStatus(user.id, user.is_active)}
+                    className={`rounded-2xl border flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                      user.is_active 
+                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-500 hover:bg-rose-500 hover:text-white' 
+                      : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-white'
+                    }`}
+                  >
+                    {actionLoading === user.id ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : user.is_active ? (
+                      <><Ban size={14} /> <span className="text-[10px] font-black uppercase">Block</span></>
+                    ) : (
+                      <><CheckCircle size={14} /> <span className="text-[10px] font-black uppercase">Activate</span></>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        )}
+      </div>
+    </div>
+  );
+}

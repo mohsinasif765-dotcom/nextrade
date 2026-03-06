@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* NexTrade Branding Colors */
+  --background: #0F172A;      /* Deep Slate Navy */
+  --foreground: #F8FAFC;      /* Off-White Text */
+  --brand-yellow: #FCD535;    /* Golden Yellow */
+  --buy-green: #00C087;       /* Emerald Green */
+  --sell-red: #F6465D;        /* Rose Red */
+  --border-slate: #1E293B;    /* Subtle Slate Border */
 }
 
 @theme inline {
+  /* Mapping variables to Tailwind classes */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-brand: var(--brand-yellow);
+  --color-buy: var(--buy-green);
+  --color-sell: var(--sell-red);
+  --color-border-subtle: var(--border-slate);
+
+  /* Radius mapping for NexTrade's soft look */
+  --radius-32: 32px;
+  --radius-35: 35px;
+  --radius-40: 40px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Global Transitions and Scrollbar */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar for NexTrade */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-slate) transparent;
 }
