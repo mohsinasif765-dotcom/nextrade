@@ -58,21 +58,18 @@ export default function DashboardHome() {
   const [activeTab, setActiveTab] = useState<MarketTab>('crypto');
   const [assets, setAssets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [direction, setDirection] = useState(1);
   const [user, setUser] = useState<any>(null);
 
-  // Auto-scroll logic for banners
+  // Banner images (use the three images in public/)
+  const bannerImages = ['/banner1.jpeg', '/banner2.jpeg', '/banner3.jpeg'];
+
+  // Auto-scroll logic for banners (cycle through images)
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentBanner((prev) => {
-        const next = prev + direction;
-        if (next >= banners.length - 1) setDirection(-1);
-        if (next <= 0) setDirection(1);
-        return Math.max(0, Math.min(banners.length - 1, next));
-      });
+      setCurrentBanner((prev) => (prev + 1) % bannerImages.length);
     }, 4000);
     return () => clearInterval(timer);
-  }, [direction]);
+  }, []);
 
   // Supabase Real-time Fetch & Subscribe
   useEffect(() => {
@@ -191,18 +188,21 @@ export default function DashboardHome() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -50 }}
                 transition={{ duration: 0.5, type: "spring" }}
-                className={`absolute inset-0 bg-gradient-to-br ${banners[currentBanner].bg} p-6 flex flex-col justify-center`}
+                className="absolute inset-0"
               >
-                <h2 className="text-xl lg:text-2xl font-black text-white mb-1 shadow-sm">{banners[currentBanner].title}</h2>
-                <p className="text-xs lg:text-sm text-white/80 font-medium">{banners[currentBanner].desc}</p>
+                <img
+                  src={bannerImages[currentBanner]}
+                  alt={`Banner ${currentBanner + 1}`}
+                  className="w-full h-full object-cover"
+                />
               </motion.div>
             </AnimatePresence>
-            
+
             <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-              {banners.map((_, idx) => (
-                <div 
-                  key={idx} 
-                  className={`h-1.5 rounded-full transition-all duration-300 ${currentBanner === idx ? "w-6 bg-white" : "w-1.5 bg-white/40"}`} 
+              {bannerImages.map((_, idx) => (
+                <div
+                  key={idx}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${currentBanner === idx ? "w-6 bg-white" : "w-1.5 bg-white/40"}`}
                 />
               ))}
             </div>
