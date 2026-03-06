@@ -24,21 +24,30 @@ export default function TradeHistory({ userId, marketType, refreshTrigger }: Tra
 
     const fetchHistory = async () => {
       setLoading(true);
+      
+      // VIP FIX: Column name 'trade_mode' use kiya hai jo aapke SQL data mein hai
       let query = supabase
         .from('trades')
         .select('*')
         .eq('user_id', userId)
-        .neq('status', 'open') 
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .neq('status', 'open');
 
+      // VIP FIX: market_type ki jagah trade_mode column query mein use hoga
       if (marketType) {
-        query = query.eq('market_type', marketType);
+        query = query.ilike('trade_mode', marketType); 
       }
 
-      const { data } = await query;
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(20);
       
-      if (data) setHistory(data);
+      if (error) {
+        console.error("History Fetch Error:", error.message);
+      }
+
+      if (data) {
+        setHistory(data);
+      }
       setLoading(false);
     };
 
@@ -56,8 +65,8 @@ export default function TradeHistory({ userId, marketType, refreshTrigger }: Tra
   if (history.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 opacity-20">
-        <ListChecks size={40} />
-        <p className="text-sm mt-2 font-bold uppercase tracking-tighter">No History Yet</p>
+        <ListChecks size={40} className="text-white" />
+        <p className="text-sm mt-2 font-bold uppercase tracking-tighter text-white">No History Yet</p>
       </div>
     );
   }
@@ -74,7 +83,7 @@ export default function TradeHistory({ userId, marketType, refreshTrigger }: Tra
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-black px-1.5 py-0.5 rounded uppercase ${
-                  trade.trade_direction === 'long' || trade.trade_direction === 'call' 
+                  trade.trade_direction === 'long' || trade.trade_direction === 'call' || trade.trade_direction === 'buy'
                   ? 'bg-emerald-500/20 text-emerald-500' 
                   : 'bg-rose-500/20 text-rose-500'
                 }`}>

@@ -16,7 +16,7 @@ export default function AdminSidebar() {
   const pathname = usePathname();
 
   const navItems = [
-    { name: "Stats", href: "/admin/dashboard", icon: LayoutDashboard },
+    { name: "Stats", href: "/admin", icon: LayoutDashboard },
     { name: "Users", href: "/admin/users", icon: Users },
     { name: "Requests", href: "/admin/requests", icon: GitPullRequest, isSpecial: true },
     { name: "Live Trades", href: "/admin/trades", icon: Activity },

@@ -2,9 +2,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Search, Users, UserMinus, UserCheck, 
-  ShieldCheck, Wallet, Mail, Loader2, 
-  SearchX, MoreVertical, Ban, CheckCircle
+  Search, Users, Mail, Loader2, 
+  SearchX, Ban, CheckCircle, Wallet
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 
@@ -22,22 +21,14 @@ export default function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Fetch Users using Secure RPC
   useEffect(() => {
     const fetchUsers = async () => {
       setLoading(true);
-      
       const { data, error } = await supabase.rpc('admin_get_users', {
         tab_status: activeTab === 'active',
         search_text: searchQuery || ''
       });
-
-      if (!error) {
-        setUsers(data || []);
-      } else {
-        console.error("RPC Error:", error.message);
-      }
-      
+      if (!error) setUsers(data || []);
       setLoading(false);
     };
 
@@ -48,30 +39,25 @@ export default function AdminUsersPage() {
     return () => clearTimeout(delayDebounceFn);
   }, [activeTab, searchQuery]);
 
-  // Toggle User Status using Secure RPC
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     setActionLoading(userId);
-    
     const { error } = await supabase.rpc('admin_toggle_user', {
       target_user_id: userId,
       new_status: !currentStatus
     });
 
     if (!error) {
-      // Remove user from current list view for smooth transition
       setUsers(prev => prev.filter(u => u.id !== userId));
-    } else {
-      alert("Error updating status: " + error.message);
     }
     setActionLoading(null);
   };
 
   return (
-    <div className="min-h-screen p-6 pb-32">
-      {/* Header & Search */}
+    <div className="min-h-screen p-4 md:p-6 pb-32">
+      {/* Header Area */}
       <div className="space-y-6 mb-8">
         <div>
-          <h1 className="text-2xl font-black uppercase tracking-tighter">User Directory</h1>
+          <h1 className="text-2xl font-black uppercase tracking-tighter text-white">User Directory</h1>
           <p className="text-[10px] text-yellow-500 font-bold uppercase tracking-[0.3em]">Total Registry: {users.length}</p>
         </div>
 
@@ -82,12 +68,12 @@ export default function AdminUsersPage() {
             placeholder="Search by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-14 bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-4 text-sm outline-none focus:border-yellow-500/50 transition-all font-medium"
+            className="w-full h-14 bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-4 text-sm text-white outline-none focus:border-yellow-500/50 transition-all font-medium"
           />
         </div>
       </div>
 
-      {/* Tabs - Gold Theme */}
+      {/* Tabs */}
       <div className="flex p-1.5 bg-slate-950/80 border border-slate-800 rounded-full mb-8">
         {(['active', 'blocked'] as UserTab[]).map((tab) => (
           <button
@@ -97,7 +83,7 @@ export default function AdminUsersPage() {
               activeTab === tab ? "text-slate-950" : "text-slate-500"
             }`}
           >
-            <span className="relative z-10">{tab} Database</span>
+            <span className="relative z-10">{tab}</span>
             {activeTab === tab && (
               <motion.div 
                 layoutId="adminUserTab" 
@@ -111,7 +97,7 @@ export default function AdminUsersPage() {
       {/* Users List */}
       <div className="space-y-4">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 opacity-30">
+          <div className="flex flex-col items-center justify-center py-20 opacity-30 text-white">
             <Loader2 className="animate-spin text-yellow-500 mb-4" size={40} />
             <p className="text-[10px] font-bold uppercase tracking-widest">Accessing Secure Records...</p>
           </div>
@@ -128,27 +114,32 @@ export default function AdminUsersPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-slate-900/60 border border-slate-800 p-5 rounded-[30px] space-y-4"
+                className="bg-slate-900/60 border border-slate-800 p-4 md:p-5 rounded-[30px] space-y-4 overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center border border-slate-700 shadow-inner">
+                <div className="flex items-center justify-between gap-3">
+                  {/* User Info Container - min-w-0 is the fix */}
+                  <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-slate-800 flex items-center justify-center border border-slate-700 shadow-inner overflow-hidden">
                       {user.profile_image_url ? (
-                        <img src={user.profile_image_url} className="w-full h-full object-cover rounded-2xl" />
+                        <img src={user.profile_image_url} className="w-full h-full object-cover" alt="Profile" />
                       ) : (
                         <Users className="text-slate-500" size={20} />
                       )}
                     </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-100 truncate w-32">{user.full_name || 'Anonymous'}</h3>
-                      <p className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
-                        <Mail size={10} /> {user.email}
+                    
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-black text-slate-100 truncate">
+                        {user.full_name || 'Anonymous User'}
+                      </h3>
+                      <p className="text-[10px] text-slate-500 font-mono flex items-center gap-1 truncate">
+                        <Mail size={10} className="shrink-0" /> 
+                        <span className="truncate">{user.email}</span>
                       </p>
                     </div>
                   </div>
                   
-                  {/* Status Badges */}
-                  <div className="flex flex-col items-end gap-1">
+                  {/* Status Badges - shrink-0 to prevent compression */}
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
                     <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${user.kyc_status === 'verified' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
                       {user.kyc_status}
                     </span>
@@ -156,19 +147,20 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
 
+                {/* Bottom Actions Grid */}
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800/50 flex items-center gap-3">
-                    <Wallet size={14} className="text-yellow-500" />
-                    <div>
-                      <p className="text-[8px] text-slate-600 font-black uppercase tracking-tighter">Net Balance</p>
-                      <p className="text-xs font-bold font-mono text-emerald-400">${Number(user.main_balance).toFixed(2)}</p>
+                  <div className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800/50 flex items-center gap-2 min-w-0">
+                    <Wallet size={14} className="text-yellow-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[8px] text-slate-600 font-black uppercase tracking-tighter truncate">Net Balance</p>
+                      <p className="text-xs font-bold font-mono text-emerald-400 truncate">${Number(user.main_balance).toFixed(2)}</p>
                     </div>
                   </div>
 
                   <button 
                     disabled={actionLoading === user.id}
                     onClick={() => toggleUserStatus(user.id, user.is_active)}
-                    className={`rounded-2xl border flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                    className={`rounded-2xl border flex items-center justify-center gap-2 transition-all active:scale-95 px-2 py-3 ${
                       user.is_active 
                       ? 'bg-rose-500/10 border-rose-500/20 text-rose-500 hover:bg-rose-500 hover:text-white' 
                       : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 hover:text-white'

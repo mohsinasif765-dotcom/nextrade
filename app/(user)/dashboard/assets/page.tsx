@@ -26,6 +26,7 @@ export default function AssetsScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
+        // VIP Fix: Hum naya RPC logic call kar rahe hain jo calculations database side pe karta hai
         const { data, error } = await supabase.rpc('get_user_assets_v1', { 
           p_user_id: user.id 
         });
@@ -41,22 +42,19 @@ export default function AssetsScreen() {
     };
 
     fetchAllAssets();
-    const interval = setInterval(fetchAllAssets, 10000);
+    const interval = setInterval(fetchAllAssets, 10000); // 10 seconds refresh
     return () => clearInterval(interval);
   }, []);
 
   if (isLoading && !assetData) {
-    // animated NexTrade loader same as deposit screen
     return (
       <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#0F172A]">
         <div className="relative flex items-center justify-center">
-          {/* Outer Pulsing Ring */}
           <motion.div 
             animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0.1, 0.3] }}
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             className="absolute w-24 h-24 rounded-full bg-yellow-500/20"
           />
-          {/* Inner Glowing Core */}
           <motion.div 
             animate={{ rotate: 360 }}
             transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
@@ -74,7 +72,7 @@ export default function AssetsScreen() {
     );
   }
 
-  // --- SAFE EXTRACTION (Fixing the null error) ---
+  // --- SAFE EXTRACTION (Fixing null errors & mapping data) ---
   const main_balance = Number(assetData?.main_balance || 0);
   const total_equity = Number(assetData?.total_equity || 0);
   const contract_equity = Number(assetData?.contract_equity || 0);
@@ -142,21 +140,41 @@ export default function AssetsScreen() {
           
           {activeTab === 'Spot' && (
             <motion.div key="spot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-              {spot_assets.length > 0 ? spot_assets.map((coin: any, index: number) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-slate-900/30 border border-slate-800/50 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-yellow-500"><Gem size={20} /></div>
-                    <div>
-                      <p className="font-bold text-sm text-white">{coin.coin_symbol || coin.symbol}</p>
-                      <p className="text-[10px] text-slate-500">Price: ${Number(coin.live_price || 0).toFixed(4)}</p>
+              {spot_assets.length > 0 ? spot_assets.map((coin: any, index: number) => {
+                // Live Price Fix: Agar price boht sasti ho (like SHIB), toh zyada decimals dikhayein
+                const livePrice = Number(coin.live_price || 0);
+                const displayPrice = livePrice < 1 ? livePrice.toFixed(6) : livePrice.toFixed(2);
+                const valueUsdt = Number(coin.value_usdt || coin.value || 0);
+
+                return (
+                  <div key={index} className="flex items-center justify-between p-4 bg-slate-900/30 border border-slate-800/50 rounded-2xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-yellow-500 border border-slate-700">
+                        <Gem size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm text-white">{coin.coin_symbol || coin.symbol}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">Price: ${displayPrice}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {/* Original Balance Logic kept intact */}
+                      <p className="font-bold font-mono text-sm text-white">
+                        {Number(coin.balance).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                      </p>
+                      {/* Live Market Value Fix */}
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        ≈ ${valueUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold font-mono text-sm text-white">{Number(coin.balance || 0)}</p>
-                    <p className="text-[10px] text-slate-400">≈ ${Number(coin.value_usdt || coin.value || 0).toFixed(2)}</p>
-                  </div>
+                );
+              }) : (
+                <div className="py-20 text-center opacity-20">
+                  <Search size={40} className="mx-auto mb-2 text-white"/>
+                  <p className="text-white uppercase text-[10px] font-bold tracking-widest">Empty Wallet</p>
                 </div>
-              )) : <div className="py-20 text-center opacity-20"><Search size={40} className="mx-auto mb-2 text-white"/><p className="text-white">Empty Wallet</p></div>}
+              )}
             </motion.div>
           )}
 
@@ -164,7 +182,7 @@ export default function AssetsScreen() {
             <motion.div key="contract" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-900/30 border border-slate-800/50 rounded-2xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center">
+                  <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
                     <Gem size={20} className="text-blue-400" />
                   </div>
                   <div>
@@ -173,9 +191,11 @@ export default function AssetsScreen() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold font-mono text-sm text-white">{contract_equity.toFixed(2)}</p>
-                  <p className={`text-[10px] font-mono ${unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {unrealized_pnl >= 0 ? '+' : ''}{unrealized_pnl.toFixed(2)}
+                  <p className="font-bold font-mono text-sm text-white">
+                    {contract_equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </p>
+                  <p className={`text-[10px] font-mono font-bold ${unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {unrealized_pnl >= 0 ? '+' : ''}{unrealized_pnl.toFixed(2)} USDT
                   </p>
                 </div>
               </div>
@@ -184,6 +204,8 @@ export default function AssetsScreen() {
 
         </AnimatePresence>
       </div>
+
+      <style jsx global>{`.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
     </div>
   );
 }

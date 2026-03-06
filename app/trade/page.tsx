@@ -157,7 +157,7 @@ function VIPTradeScreenContent() {
   const filteredSidebarAssets = allAssets.filter(item => item.asset_type === sidebarTab && item.symbol.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <div className="h-[100dvh] w-full max-w-md lg:max-w-full mx-auto bg-[#0F172A] text-[#FFFFFF] flex flex-col lg:flex-row font-sans relative">
+    <div className="h-[100dvh] w-full max-w-md lg:max-w-full mx-auto bg-[#0F172A] text-[#FFFFFF] flex flex-col lg:flex-row font-sans relative overflow-hidden">
       
       {/* DESKTOP LEFT SIDEBAR - Asset List */}
       <div className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-[#1E293B] bg-[#0B1120]">
@@ -229,9 +229,9 @@ function VIPTradeScreenContent() {
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* 1. HEADER */}
-        <header className="shrink-0 h-[60px] px-[16px] lg:px-[24px] flex items-center justify-between border-b border-[#1E293B]">
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* 1. HEADER (Fixed) */}
+        <header className="shrink-0 h-[60px] px-[16px] lg:px-[24px] flex items-center justify-between border-b border-[#1E293B] bg-[#0F172A] z-20">
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={() => router.back()} className="mr-[12px] active:scale-90 transition-transform shrink-0">
               <ArrowLeft size={22} className="text-[#FFFFFF]" />
@@ -255,8 +255,8 @@ function VIPTradeScreenContent() {
           </div>
         </header>
 
-        {/* 2. MARKET TABS */}
-        <div className="shrink-0 h-[44px] flex border-b border-[#1E293B] overflow-x-auto lg:overflow-x-visible hide-scrollbar bg-[#0F172A]">
+        {/* 2. MARKET TABS (Fixed) */}
+        <div className="shrink-0 h-[44px] flex border-b border-[#1E293B] overflow-x-auto lg:overflow-x-visible hide-scrollbar bg-[#0F172A] z-20">
           {marketTabs.map((tab) => (
             <button 
               key={tab} 
@@ -271,120 +271,125 @@ function VIPTradeScreenContent() {
           ))}
         </div>
 
-        {/* 3. PRICE SECTION - Enhanced for Desktop */}
-        <div className="shrink-0 h-[80px] lg:h-[100px] px-[16px] lg:px-[24px] py-[10px] flex justify-between items-center bg-[#0F172A] border-b border-[#1E293B]">
-          {isLoading || activeAssetData.live_price === 0 ? (
-            <div className="w-full flex items-center justify-center text-[#FCD535]"><Loader2 className="animate-spin" size={24} /></div>
-          ) : (
-            <>
-              <div className="w-full lg:w-[50%] flex flex-col justify-center gap-2">
-                <motion.div 
-                  key={activeAssetData.live_price} 
-                  initial={{ scale: 0.95 }} 
-                  animate={{ scale: 1 }} 
-                  className={`text-[28px] lg:text-[36px] font-[700] tracking-tight flex items-center gap-2 font-mono ${
-                    activeAssetData.isUp ? 'text-[#00C087]' : 'text-[#F6465D]'
+        {/* 3. SCROLLABLE MIDDLE AREA (The Fix) */}
+        <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col bg-[#0F172A]">
+          
+          {/* PRICE SECTION */}
+          <div className="shrink-0 h-[80px] lg:h-[100px] px-[16px] lg:px-[24px] py-[10px] flex justify-between items-center bg-[#0F172A] border-b border-[#1E293B]">
+            {isLoading || activeAssetData.live_price === 0 ? (
+              <div className="w-full flex items-center justify-center text-[#FCD535]"><Loader2 className="animate-spin" size={24} /></div>
+            ) : (
+              <>
+                <div className="w-full lg:w-[50%] flex flex-col justify-center gap-2">
+                  <motion.div 
+                    key={activeAssetData.live_price} 
+                    initial={{ scale: 0.95 }} 
+                    animate={{ scale: 1 }} 
+                    className={`text-[28px] lg:text-[36px] font-[700] tracking-tight flex items-center gap-2 font-mono ${
+                      activeAssetData.isUp ? 'text-[#00C087]' : 'text-[#F6465D]'
+                    }`}
+                  >
+                    {formatPrice(activeAssetData.live_price)}
+                  </motion.div>
+                  <div className={`text-[13px] lg:text-[15px] font-medium ${activeAssetData.isUp ? 'text-[#00C087]' : 'text-[#F6465D]'}`}>
+                    ≈ ${(activeAssetData.live_price).toFixed(2)}
+                  </div>
+                </div>
+                <div className="hidden lg:flex w-[50%] flex-row justify-end gap-8">
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-[12px] text-[#94A3B8] font-medium">24h High</div>
+                    <div className="text-[18px] font-bold text-[#FFFFFF]">{simulatedHigh}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-[12px] text-[#94A3B8] font-medium">24h Low</div>
+                    <div className="text-[18px] font-bold text-[#FFFFFF]">{simulatedLow}</div>
+                  </div>
+                </div>
+                <div className="lg:hidden flex flex-col justify-center items-end text-[11px] text-[#94A3B8] gap-1">
+                  <div className="flex justify-between w-full max-w-[100px]"><span>High</span> <span className="text-[#FFFFFF]">{simulatedHigh}</span></div>
+                  <div className="flex justify-between w-full max-w-[100px]"><span>Low</span> <span className="text-[#FFFFFF]">{simulatedLow}</span></div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* CHART AREA */}
+          <div className="shrink-0 h-[320px] lg:h-[450px] bg-[#0F172A] p-[8px] lg:p-[12px] flex flex-col relative border-b border-[#1E293B]">
+            <div className="shrink-0 h-[30px] flex items-center gap-4 overflow-x-auto hide-scrollbar mb-[4px]">
+              {timeframes.map((tf) => (
+                <button 
+                  key={tf} 
+                  onClick={() => setActiveTimeframe(tf)} 
+                  className={`text-[12px] lg:text-[13px] font-medium transition-colors ${
+                    activeTimeframe === tf ? "text-[#FCD535]" : "text-[#94A3B8] hover:text-white"
                   }`}
                 >
-                  {formatPrice(activeAssetData.live_price)}
-                </motion.div>
-                <div className={`text-[13px] lg:text-[15px] font-medium ${activeAssetData.isUp ? 'text-[#00C087]' : 'text-[#F6465D]'}`}>
-                  ≈ ${(activeAssetData.live_price).toFixed(2)}
-                </div>
-              </div>
-              <div className="hidden lg:flex w-[50%] flex-row justify-end gap-8">
-                <div className="flex flex-col items-end gap-2">
-                  <div className="text-[12px] text-[#94A3B8] font-medium">24h High</div>
-                  <div className="text-[18px] font-bold text-[#FFFFFF]">{simulatedHigh}</div>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="text-[12px] text-[#94A3B8] font-medium">24h Low</div>
-                  <div className="text-[18px] font-bold text-[#FFFFFF]">{simulatedLow}</div>
-                </div>
-              </div>
-              <div className="lg:hidden flex flex-col justify-center items-end text-[11px] text-[#94A3B8] gap-1">
-                <div className="flex justify-between w-full max-w-[100px]"><span>High</span> <span className="text-[#FFFFFF]">{simulatedHigh}</span></div>
-                <div className="flex justify-between w-full max-w-[100px]"><span>Low</span> <span className="text-[#FFFFFF]">{simulatedLow}</span></div>
-              </div>
-            </>
-          )}
-        </div>
+                  {tf}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 w-full rounded-lg overflow-hidden relative">
+              <TradingChart 
+                symbol={urlSymbol} 
+                assetType={urlType as any} 
+                activeTimeframe={activeTimeframe} 
+                currentLivePrice={activeAssetData.live_price} 
+              />
+            </div>
+          </div>
 
-        {/* 4. CHART AREA - Larger on Desktop */}
-        <div className="shrink-0 h-[300px] lg:h-[450px] bg-[#0F172A] p-[8px] lg:p-[12px] flex flex-col relative border-b border-[#1E293B] pb-[80px]">
-          <div className="shrink-0 h-[30px] flex items-center gap-4 overflow-x-auto hide-scrollbar mb-[4px]">
-            {timeframes.map((tf) => (
+          {/* POSITIONS & PNL SECTION (Mobile View - Now Scrollable) */}
+          <div className="flex-1 flex flex-col bg-[#0B1120] lg:hidden">
+            <div className="flex items-center px-4 lg:px-6 border-b border-[#1E293B] shrink-0 space-x-8">
               <button 
-                key={tf} 
-                onClick={() => setActiveTimeframe(tf)} 
-                className={`text-[12px] lg:text-[13px] font-medium transition-colors ${
-                  activeTimeframe === tf ? "text-[#FCD535]" : "text-[#94A3B8] hover:text-white"
+                onClick={() => setBottomActiveTab('positions')} 
+                className={`py-4 text-[12px] lg:text-[13px] font-bold uppercase tracking-wider relative transition-colors ${
+                  bottomActiveTab === 'positions' ? 'text-[#FCD535]' : 'text-[#94A3B8] hover:text-white'
                 }`}
               >
-                {tf}
+                <div className="flex items-center gap-2">
+                  <ListChecks size={18} />
+                  Positions
+                </div>
+                {bottomActiveTab === 'positions' && <motion.div layoutId="btmTab" className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FCD535]" />}
               </button>
-            ))}
-          </div>
-          <div className="flex-1 w-full rounded-lg overflow-hidden relative">
-            <TradingChart 
-              symbol={urlSymbol} 
-              assetType={urlType as any} 
-              activeTimeframe={activeTimeframe} 
-              currentLivePrice={activeAssetData.live_price} 
-            />
+              <button 
+                onClick={() => setBottomActiveTab('history')} 
+                className={`py-4 text-[12px] lg:text-[13px] font-bold uppercase tracking-wider relative transition-colors ${
+                  bottomActiveTab === 'history' ? 'text-[#FCD535]' : 'text-[#94A3B8] hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Clock size={18} />
+                  Order History
+                </div>
+                {bottomActiveTab === 'history' && <motion.div layoutId="btmTab" className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FCD535]" />}
+              </button>
+            </div>
+
+            {/* Content area within scroll - extra bottom padding for action buttons */}
+            <div className="p-3 pb-10">
+              {bottomActiveTab === 'positions' ? (
+                <ActivePositions 
+                  userId={userId || ''} 
+                  livePrice={activeAssetData.live_price} 
+                  marketType={activeMarket} 
+                  allAssets={allAssets} 
+                  onPositionClosed={triggerPositionRefresh}
+                  refreshTrigger={refreshPositionsToggle}
+                />
+              ) : (
+                <TradeHistory 
+                  userId={userId || ''} 
+                  marketType={activeMarket}
+                />
+              )}
+            </div>
           </div>
         </div>
 
-        {/* 5. POSITIONS & PNL SECTION - Mobile Only */}
-        <div className="flex-1 flex flex-col bg-[#0B1120] overflow-hidden lg:hidden">
-<div className="flex items-center px-4 lg:px-6 border-b border-[#1E293B] shrink-0 space-x-8 lg:hidden">
-            <button 
-              onClick={() => setBottomActiveTab('positions')} 
-              className={`py-4 text-[12px] lg:text-[13px] font-bold uppercase tracking-wider relative transition-colors ${
-                bottomActiveTab === 'positions' ? 'text-[#FCD535]' : 'text-[#94A3B8] hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <ListChecks size={18} />
-                Positions
-              </div>
-              {bottomActiveTab === 'positions' && <motion.div layoutId="btmTab" className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FCD535]" />}
-            </button>
-            <button 
-              onClick={() => setBottomActiveTab('history')} 
-              className={`py-4 text-[12px] lg:text-[13px] font-bold uppercase tracking-wider relative transition-colors ${
-                bottomActiveTab === 'history' ? 'text-[#FCD535]' : 'text-[#94A3B8] hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Clock size={18} />
-                Order History
-              </div>
-              {bottomActiveTab === 'history' && <motion.div layoutId="btmTab" className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#FCD535]" />}
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto hide-scrollbar p-3 lg:p-6">
-          {bottomActiveTab === 'positions' ? (
-            <ActivePositions 
-              userId={userId || ''} 
-              livePrice={activeAssetData.live_price} 
-              marketType={activeMarket} 
-              allAssets={allAssets} 
-              onPositionClosed={triggerPositionRefresh} // trigger refresh
-              refreshTrigger={refreshPositionsToggle} // Pass toggle state
-            />
-          ) : (
-            <TradeHistory 
-              userId={userId || ''} 
-              marketType={activeMarket}
-            />
-          )}
-          </div>
-        </div>
-
-        {/* 6. ACTION BUTTONS (Sticky Bottom) */}
-        <div className="shrink-0 sticky bottom-0 bg-[#1E293B] border-t border-[#334155] p-[16px] lg:p-[24px] pb-safe z-50">
+        {/* 4. ACTION BUTTONS (Sticky/Fixed at Bottom) */}
+        <div className="shrink-0 sticky bottom-0 bg-[#1E293B] border-t border-[#334155] p-[16px] lg:p-[24px] pb-safe z-30">
           <div className="grid grid-cols-2 gap-[12px] lg:gap-[16px]">
             {activeMarket === 'Spot' ? (
               <>
@@ -421,7 +426,7 @@ function VIPTradeScreenContent() {
         </div>
       </div>
 
-      {/* DESKTOP RIGHT SIDEBAR - Positions & History */}
+      {/* DESKTOP RIGHT SIDEBAR (Unchanged) */}
       <div className="hidden lg:flex lg:w-80 lg:flex-col bg-[#0B1120] border-l border-[#1E293B]">
         <div className="flex items-center px-4 lg:px-6 border-b border-[#1E293B] shrink-0 space-x-8">
           <button 
@@ -456,8 +461,8 @@ function VIPTradeScreenContent() {
               livePrice={activeAssetData.live_price} 
               marketType={activeMarket} 
               allAssets={allAssets} 
-              onPositionClosed={triggerPositionRefresh} // trigger refresh
-              refreshTrigger={refreshPositionsToggle} // Pass toggle state
+              onPositionClosed={triggerPositionRefresh}
+              refreshTrigger={refreshPositionsToggle}
             />
           ) : (
             <TradeHistory 
@@ -475,10 +480,9 @@ function VIPTradeScreenContent() {
         symbol={urlSymbol} 
         marketType={activeMarket} 
         activeTimeframe={activeTimeframe} 
-        onOrderPlaced={triggerPositionRefresh} // Ensure positions refresh immediately after order
+        onOrderPlaced={triggerPositionRefresh}
       />
 
-      {/* 7. MOBILE MARKET SHEET (Mobile Only) */}
       <AnimatePresence>
         {isSidebarOpen && (
           <>
@@ -525,7 +529,7 @@ function VIPTradeScreenContent() {
                   </button>
                 ))}
               </div>
-              <div className="flex-1 overflow-y-auto p-2">
+              <div className="flex-1 overflow-y-auto p-2 text-white">
                 {filteredSidebarAssets.map((item) => (
                   <div 
                     key={item.symbol} 
@@ -535,7 +539,7 @@ function VIPTradeScreenContent() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-slate-900 flex items-center justify-center shrink-0">
+                      <div className="h-8 w-8 rounded-full bg-slate-900 flex items-center justify-center shrink-0 text-white">
                         {getAssetIcon(item.symbol, item.asset_type) ? (
                           <img src={getAssetIcon(item.symbol, item.asset_type)!} className="h-full w-full object-cover p-1" alt={item.symbol} />
                         ) : (

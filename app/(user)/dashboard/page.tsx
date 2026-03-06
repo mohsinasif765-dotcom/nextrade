@@ -149,7 +149,7 @@ export default function DashboardHome() {
   ];
 
   return (
-    <div className="pt-6 px-4 lg:px-8 pb-24 lg:pb-6 font-sans w-full relative">
+    <div className="pt-6 px-4 lg:px-8 pb-24 lg:pb-6 font-sans w-full relative overflow-x-hidden">
       
       {/* 1. Header Area */}
       <div className="flex justify-between items-center mb-6 lg:mb-8">
@@ -254,7 +254,7 @@ export default function DashboardHome() {
                 const iconUrl = getAssetIcon(asset.symbol, asset.asset_type);
                 return (
                   <div key={idx} className="flex items-center justify-between p-3 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className="h-8 w-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden">
                         {iconUrl ? (
                           <img 
@@ -268,7 +268,7 @@ export default function DashboardHome() {
                         )}
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-300">{asset.symbol}</p>
+                        <p className="text-xs font-bold text-slate-300 truncate min-w-0">{asset.symbol}</p>
                         <p className={`text-[10px] font-black ${asset.isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {asset.isUp ? <TrendingUp size={8} className="inline mr-1"/> : <TrendingDown size={8} className="inline mr-1"/>}
                           {asset.liveChange}%
@@ -297,7 +297,7 @@ export default function DashboardHome() {
               {topAssets.map((asset, idx) => {
                 const iconUrl = getAssetIcon(asset.symbol, asset.asset_type);
                 return (
-                  <div key={idx} className="flex flex-col items-center justify-center p-2 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl shadow-sm">
+                  <div key={idx} className="flex flex-col items-center justify-center p-2 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl shadow-sm min-w-0">
                     <div className="h-7 w-7 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden mb-1.5">
                       {iconUrl ? (
                         <img 
@@ -311,7 +311,7 @@ export default function DashboardHome() {
                       )}
                     </div>
                     
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide truncate w-full text-center">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide truncate break-words w-full text-center">
                       {asset.symbol.replace('USDT', '')}
                     </div>
                     
@@ -384,7 +384,7 @@ export default function DashboardHome() {
                   const listIconUrl = getAssetIcon(item.symbol, item.asset_type);
                   return (
                     <div key={idx} className="flex justify-between items-center p-3 lg:p-4 rounded-xl hover:bg-slate-800/50 transition-colors cursor-pointer group">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                          {/* List Logo */}
                          <div className="h-8 w-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
                             {listIconUrl ? (
@@ -393,8 +393,8 @@ export default function DashboardHome() {
                               <Gem className="text-amber-500" size={14} />
                             )}
                          </div>
-                         <div className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors">
-                            {item.symbol}
+                         <div className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors truncate min-w-0">
+                           {item.symbol}
                          </div>
                       </div>
                       <div className="flex items-center gap-6">

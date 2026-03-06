@@ -16,7 +16,7 @@ export default function AdminBottomNav() {
 
   // Admin Navigation Items
   const navItems = [
-    { name: "Stats", href: "/admin/dashboard", icon: LayoutDashboard },
+    { name: "Stats", href: "/admin", icon: LayoutDashboard },
     { name: "Users", href: "/admin/users", icon: Users },
     // Center Button (Requests - KYC/Deposit/Withdraw)
     { name: "Requests", href: "/admin/requests", icon: GitPullRequest, isSpecial: true },
