@@ -552,13 +552,13 @@ function VIPTradeScreenContent() {
                   onClick={() => setIsOrderPanelOpen(true)} 
                   className="h-[50px] lg:h-[56px] bg-[#00C087] rounded-[12px] text-[15px] lg:text-[16px] font-[700] text-white active:scale-95 transition-transform hover:bg-[#00B878]"
                 >
-                  {activeMarket === 'Bitcast' ? 'CALL' : 'OPEN LONG'}
+                  {activeMarket === 'Bitcast' ? 'BUY LONG' : 'OPEN LONG'}
                 </button>
                 <button 
                   onClick={() => setIsOrderPanelOpen(true)} 
                   className="h-[50px] lg:h-[56px] bg-[#F6465D] rounded-[12px] text-[15px] lg:text-[16px] font-[700] text-white active:scale-95 transition-transform hover:bg-[#E63A52]"
                 >
-                  {activeMarket === 'Bitcast' ? 'PUT' : 'OPEN SHORT'}
+                  {activeMarket === 'Bitcast' ? 'BUY SHORT' : 'OPEN SHORT'}
                 </button>
               </>
             )}

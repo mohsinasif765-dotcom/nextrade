@@ -151,8 +151,8 @@ export default function OrderBottomSheet({
         
         // Determine the side name for the confirmation
         let sideName = direction === 'long' 
-          ? (marketType === 'Bitcast' ? 'CALL' : 'OPEN LONG')
-          : (marketType === 'Bitcast' ? 'PUT' : 'OPEN SHORT');
+          ? (marketType === 'Bitcast' ? 'BUY LONG' : 'OPEN LONG')
+          : (marketType === 'Bitcast' ? 'BUY SHORT' : 'OPEN SHORT');
         
         // VIP Trade Confirmation Modal
         if (onTradeConfirm) {
@@ -386,7 +386,7 @@ export default function OrderBottomSheet({
                   disabled={isLoading !== null || isLowBalance || !userId}
                   className="w-full h-[52px] rounded-[14px] bg-[#00C087] text-[#FFFFFF] text-[16px] font-[700] mb-[12px] flex justify-center items-center disabled:opacity-50 active:scale-[0.98] transition-transform"
                 >
-                  {isLoading === 'long' ? <Loader2 className="animate-spin" size={20} /> : (marketType === 'Bitcast' ? 'CALL (UP)' : 'OPEN LONG')}
+                  {isLoading === 'long' ? <Loader2 className="animate-spin" size={20} /> : (marketType === 'Bitcast' ? 'BUY LONG' : 'OPEN LONG')}
                 </button>
                 
                 <button 
@@ -394,7 +394,7 @@ export default function OrderBottomSheet({
                   disabled={isLoading !== null || isLowBalance || !userId}
                   className="w-full h-[52px] rounded-[14px] bg-[#F6465D] text-[#FFFFFF] text-[16px] font-[700] flex justify-center items-center disabled:opacity-50 active:scale-[0.98] transition-transform"
                 >
-                  {isLoading === 'short' ? <Loader2 className="animate-spin" size={20} /> : (marketType === 'Bitcast' ? 'PUT (DOWN)' : 'OPEN SHORT')}
+                  {isLoading === 'short' ? <Loader2 className="animate-spin" size={20} /> : (marketType === 'Bitcast' ? 'BUY SHORT' : 'OPEN SHORT')}
                 </button>
               </div>
 
