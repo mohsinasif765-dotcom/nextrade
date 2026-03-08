@@ -175,7 +175,7 @@ export default function LandingPage() {
           className="mt-12 flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
         >
           <Link href="/login" className="w-full sm:w-auto px-8 py-4 bg-emerald-500 text-slate-950 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-emerald-400 transition-all active:scale-95 shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2">
-            Initialize Terminal <ArrowRight size={18} />
+            Start <ArrowRight size={18} />
           </Link>
           
           {/* Mobile Install Button */}

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, Suspense, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Home, ChevronDown, Loader2, Search, X, Clock, Gem, ListChecks } from "lucide-react";
+import { ArrowLeft, Home, ChevronDown, Loader2, Search, X, Clock, Gem, ListChecks, TrendingUp, TrendingDown, Zap, CheckCircle2 } from "lucide-react";
 import TradingChart from "@/components/TradingChart"; 
 import OrderBottomSheet from "@/components/OrderBottomSheet";
 import ActivePositions from "@/components/ActivePositions"; 
@@ -76,6 +76,17 @@ function VIPTradeScreenContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // VIP FIX: Bitcast Real-time Tracking States
+  const [activeBitcast, setActiveBitcast] = useState<any>(null);
+  const [countdown, setCountdown] = useState<number>(0);
+  const [initialCountdown, setInitialCountdown] = useState<number>(0);
+  const [resultData, setResultData] = useState<{pnl: number, isWin: boolean} | null>(null);
+  const [isClosingTrade, setIsClosingTrade] = useState(false);
+  const [showBitcastPopup, setShowBitcastPopup] = useState(false); // Popup visibility alag state
+
+  // VIP Trade Confirmation Modal
+  const [tradeConfirmation, setTradeConfirmation] = useState<{show: boolean, symbol: string, side: string, marketType: MarketTab} | null>(null);
+
   // Binance WebSocket Reference
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -124,14 +135,86 @@ function VIPTradeScreenContent() {
 
   const triggerPositionRefresh = () => {
      setRefreshPositionsToggle(prev => !prev);
+     // VIP FIX: Agar Bitcast hai to latest trade dhoondo timer chalane k liye
+     if(activeMarket === 'Bitcast') checkForActiveBitcast();
   }
+
+  // VIP FIX: Bitcast Automation Logic
+  const checkForActiveBitcast = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('trades')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('trade_mode', 'Bitcast')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (data) {
+      const expiry = new Date(data.expire_time).getTime();
+      const now = new Date().getTime();
+      const diff = Math.ceil((expiry - now) / 1000);
+
+      if (diff > 0) {
+        setActiveBitcast(data);
+        setCountdown(diff);
+        setInitialCountdown(diff);
+        setShowBitcastPopup(true); // Popup ko dikhao
+      }
+    }
+  };
+
+  // Timer Effect
+  useEffect(() => {
+    let timer: any;
+    if (countdown > 0 && activeBitcast) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    } else if (countdown === 0 && activeBitcast && !isClosingTrade) {
+      executeTradeClosure();
+    }
+    return () => clearInterval(timer);
+  }, [countdown, activeBitcast]);
+
+  const executeTradeClosure = async () => {
+    if (!activeBitcast || isClosingTrade) return;
+    setIsClosingTrade(true);
+
+    try {
+      const { data, error } = await supabase.rpc('close_trade_v3', {
+        p_trade_id: activeBitcast.id,
+        p_user_id: userId,
+        p_close_price: activeAssetData.live_price
+      });
+
+      if (data && data.success) {
+        setResultData({ pnl: data.pnl, isWin: data.pnl >= 0 });
+        setShowBitcastPopup(false); // Popup band karo
+        setActiveBitcast(null);
+        triggerPositionRefresh();
+      }
+    } catch (err) {
+      console.error("Auto close failed", err);
+    } finally {
+      setIsClosingTrade(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
 
     const checkUser = async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user && mounted) setUserId(data.user.id);
+      if (data?.user && mounted) {
+          setUserId(data.user.id);
+          // Initial check for bitcast
+          if (activeMarket === 'Bitcast') checkForActiveBitcast();
+      }
     };
     checkUser();
 
@@ -530,6 +613,156 @@ function VIPTradeScreenContent() {
         </div>
       </div>
 
+      {/* VIP FIX: BITCAST COUNTDOWN OVERLAY */}
+      <AnimatePresence>
+        {activeBitcast && showBitcastPopup && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-[#1E293B] border border-[#FCD535]/50 rounded-2xl p-4 shadow-2xl flex items-center gap-4 min-w-[280px]"
+          >
+            <div className="relative h-12 w-12 flex items-center justify-center shrink-0">
+              <svg className="absolute inset-0 h-full w-full" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="20" fill="none" stroke="#334155" strokeWidth="3" />
+                <motion.circle
+                  cx="24"
+                  cy="24"
+                  r="20"
+                  fill="none"
+                  stroke="#FCD535"
+                  strokeWidth="3"
+                  strokeDasharray={`${2 * Math.PI * 20}`}
+                  strokeDashoffset={`${2 * Math.PI * 20 * (1 - (initialCountdown > 0 ? countdown / initialCountdown : 0))}`}
+                  strokeLinecap="round"
+                  initial={{ strokeDashoffset: 0 }}
+                  animate={{ strokeDashoffset: `${2 * Math.PI * 20 * (1 - (initialCountdown > 0 ? countdown / initialCountdown : 0))}` }}
+                  transition={{ duration: 0.5 }}
+                  style={{ transform: 'rotate(-90deg)', transformOrigin: '24px 24px' }}
+                />
+              </svg>
+              <span className="text-lg font-bold text-[#FCD535] relative z-10">{countdown}s</span>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                 <span className="text-xs text-slate-400 uppercase font-bold">{activeBitcast.symbol}</span>
+                 {activeBitcast.trade_direction === 'long' || activeBitcast.trade_direction === 'call' ? (
+                   <TrendingUp size={14} className="text-[#00C087]" />
+                 ) : (
+                   <TrendingDown size={14} className="text-[#F6465D]" />
+                 )}
+              </div>
+              <p className="text-sm font-bold text-white">Execution in progress...</p>
+            </div>
+            <button onClick={() => setShowBitcastPopup(false)} className="text-slate-500 hover:text-white transition-colors">
+              <X size={20} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* VIP FIX: BITCAST RESULT MODAL */}
+      <AnimatePresence>
+        {resultData && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setResultData(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }}
+              className="relative bg-[#0F172A] border border-slate-800 p-8 rounded-[32px] w-full max-w-sm text-center shadow-2xl shadow-black/50 overflow-hidden"
+            >
+              {/* Background Glow */}
+              <div className={`absolute -top-24 -left-24 h-48 w-48 rounded-full blur-[80px] ${resultData.isWin ? 'bg-[#00C087]/20' : 'bg-[#F6465D]/20'}`} />
+              
+              <div className={`h-20 w-20 rounded-3xl mx-auto flex items-center justify-center mb-6 rotate-12 ${resultData.isWin ? 'bg-[#00C087]' : 'bg-[#F6465D]'}`}>
+                 {resultData.isWin ? <Zap size={40} className="text-white fill-white" /> : <X size={40} className="text-white" />}
+              </div>
+              
+              <h2 className={`text-3xl font-black mb-2 italic ${resultData.isWin ? 'text-[#00C087]' : 'text-[#F6465D]'}`}>
+                {resultData.isWin ? "PROFIT!" : "LOSS!" }
+              </h2>
+              <p className="text-slate-400 mb-8 font-medium">Trade has been settled.</p>
+              
+              <div className="bg-slate-900/50 rounded-2xl p-4 mb-8 border border-slate-800">
+                <span className="text-xs text-slate-500 block uppercase tracking-widest font-bold mb-1">Amount</span>
+                <span className={`text-2xl font-mono font-bold ${resultData.isWin ? 'text-[#00C087]' : 'text-[#F6465D]'}`}>
+                  {resultData.isWin ? '+' : ''}{resultData.pnl.toFixed(2)} USDT
+                </span>
+              </div>
+              
+              <button 
+                onClick={() => setResultData(null)}
+                className={`w-full h-14 rounded-2xl text-lg font-bold text-white shadow-lg active:scale-95 transition-all ${resultData.isWin ? 'bg-[#00C087] shadow-[#00C087]/20' : 'bg-[#F6465D] shadow-[#F6465D]/20'}`}
+              >
+                GOT IT
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* VIP TRADE CONFIRMATION MODAL */}
+      <AnimatePresence>
+        {tradeConfirmation?.show && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setTradeConfirmation(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.5, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.5, opacity: 0, y: 20 }}
+              className="relative bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-[#FCD535]/30 p-8 rounded-[32px] w-full max-w-md text-center shadow-2xl shadow-[#FCD535]/10 overflow-hidden"
+            >
+              {/* Background Glow */}
+              <div className="absolute -top-32 -right-32 h-64 w-64 rounded-full blur-[100px] bg-[#FCD535]/10" />
+              <div className="absolute -bottom-32 -left-32 h-64 w-64 rounded-full blur-[100px] bg-[#FCD535]/5" />
+              
+              {/* Content */}
+              <div className="relative z-10">
+                <div className="h-16 w-16 rounded-full mx-auto flex items-center justify-center mb-6 bg-gradient-to-br from-[#FCD535] to-[#F4AF00] shadow-lg shadow-[#FCD535]/30">
+                  <CheckCircle2 size={32} className="text-[#0F172A]" />
+                </div>
+                
+                <h2 className="text-3xl font-black mb-2 text-[#FCD535]">
+                  TRADE PLACED
+                </h2>
+                <p className="text-slate-300 mb-1 font-medium">Your order has been confirmed</p>
+                
+                <div className="bg-slate-900/60 rounded-2xl p-4 mb-8 border border-slate-700/50 mt-6">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs text-slate-400 uppercase tracking-widest font-bold">Asset</span>
+                    <span className="text-lg font-bold text-[#FCD535]">{tradeConfirmation?.symbol}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs text-slate-400 uppercase tracking-widest font-bold">Type</span>
+                    <span className={`text-lg font-bold ${tradeConfirmation?.side === 'CALL' || tradeConfirmation?.side === 'OPEN LONG' ? 'text-[#00C087]' : 'text-[#F6465D]'}`}>
+                      {tradeConfirmation?.side}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-400 uppercase tracking-widest font-bold">Market</span>
+                    <span className="text-sm font-bold text-slate-200">{tradeConfirmation?.marketType}</span>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => setTradeConfirmation(null)}
+                  className="w-full h-14 rounded-2xl text-lg font-bold text-[#0F172A] bg-gradient-to-r from-[#FCD535] to-[#F4AF00] shadow-lg shadow-[#FCD535]/30 active:scale-95 transition-all hover:shadow-[#FCD535]/50"
+                >
+                  OK
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <OrderBottomSheet 
         isOpen={isOrderPanelOpen} 
         onClose={() => setIsOrderPanelOpen(false)} 
@@ -538,6 +771,10 @@ function VIPTradeScreenContent() {
         marketType={activeMarket} 
         activeTimeframe={activeTimeframe} 
         onOrderPlaced={triggerPositionRefresh}
+        onTradeConfirm={(side: string) => {
+          setTradeConfirmation({ show: true, symbol: urlSymbol, side, marketType: activeMarket });
+          setIsOrderPanelOpen(false);
+        }}
       />
 
       <AnimatePresence>
@@ -621,7 +858,7 @@ function VIPTradeScreenContent() {
         )}
       </AnimatePresence>
 
-      <style jsx global>{`.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
+      <style jsx global>{`.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; } .animate-spin-slow { animation: spin 3s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

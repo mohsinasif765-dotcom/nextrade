@@ -22,6 +22,7 @@ interface OrderBottomSheetProps {
   marketType: string;       // 'Futures' | 'Leverage' | 'Bitcast' | 'Forex' | 'Spot'
   activeTimeframe?: string; 
   onOrderPlaced?: () => void; // Parent (VIPTradeScreen) ko refresh trigger dene k liye
+  onTradeConfirm?: (side: string) => void; // VIP Trade Confirmation Modal ko trigger karny k liye
 }
 
 export default function OrderBottomSheet({ 
@@ -31,7 +32,8 @@ export default function OrderBottomSheet({
   symbol, 
   marketType, 
   activeTimeframe = '1m',
-  onOrderPlaced 
+  onOrderPlaced,
+  onTradeConfirm
 }: OrderBottomSheetProps) {
   const [orderType, setOrderType] = useState<OrderType>('Market');
   const [marginMode, setMarginMode] = useState<MarginMode>('Cross');
@@ -146,7 +148,18 @@ export default function OrderBottomSheet({
 
       if (data?.success) {
         setAvailableBalance(data.new_balance || availableBalance - marginNum);
-        alert(`${direction.toUpperCase()} Trade Opened Successfully!`);
+        
+        // Determine the side name for the confirmation
+        let sideName = direction === 'long' 
+          ? (marketType === 'Bitcast' ? 'CALL' : 'OPEN LONG')
+          : (marketType === 'Bitcast' ? 'PUT' : 'OPEN SHORT');
+        
+        // VIP Trade Confirmation Modal
+        if (onTradeConfirm) {
+          onTradeConfirm(sideName);
+        } else {
+          alert(`${direction.toUpperCase()} Trade Opened Successfully!`);
+        }
         
         // VIP Fix: Trigger refresh in parent component
         if (onOrderPlaced) onOrderPlaced();
