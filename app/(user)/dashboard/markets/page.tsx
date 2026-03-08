@@ -96,7 +96,7 @@ export default function MarketsPage() {
             if (message && message.s && message.c && message.P) {
               const symbol = message.s; // e.g. BTCUSDT
               const livePrice = parseFloat(message.c); // Current price
-              const priceChangePercent = parseFloat(message.P).toFixed(2); // 24hr change percent
+              const priceChangePercent = parseFloat(message.P).toFixed(4); // 24hr change percent - 4 decimal places
               
               setAssets(prevAssets => prevAssets.map(asset => {
                 if (asset.symbol === symbol) {
@@ -133,7 +133,7 @@ export default function MarketsPage() {
               const newPrice = payload.new.live_price;
               const isUp = newPrice >= oldPrice;
               const diff = newPrice - oldPrice;
-              const percentChange = oldPrice > 0 ? ((diff / oldPrice) * 100).toFixed(3) : "0.00";
+              const percentChange = oldPrice > 0 ? ((diff / oldPrice) * 100).toFixed(4) : "0.00";
               
               return { ...asset, live_price: newPrice, isUp, liveChange: diff !== 0 ? percentChange : asset.liveChange };
             }
