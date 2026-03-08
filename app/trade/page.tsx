@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Home, ChevronDown, Loader2, Search, X, Clock, Gem, ListChecks } from "lucide-react";
 import TradingChart from "@/components/TradingChart"; 
@@ -30,7 +30,7 @@ const defaultAssets: Record<MarketTab, { symbol: string, type: AssetType }> = {
 
 // Helpers
 const formatPrice = (price: number) => {
-  if (price < 1) return price.toFixed(4);
+  if (price < 1) return price.toFixed(6); // VIP Fix for better precision on small coins
   return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
 };
 
@@ -75,27 +75,30 @@ function VIPTradeScreenContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [adminControlStatus, setAdminControlStatus] = useState<'normal' | 'force_win' | 'force_loss'>('normal');
 
-  // Naya state bottom tabs ke liye
+  // Binance WebSocket Reference
+  const wsRef = useRef<WebSocket | null>(null);
+
   const [bottomActiveTab, setBottomActiveTab] = useState<'positions' | 'history'>('positions');
-  const [refreshPositionsToggle, setRefreshPositionsToggle] = useState(false); // To force refresh
+  const [refreshPositionsToggle, setRefreshPositionsToggle] = useState(false);
 
   const marketTabs: MarketTab[] = ['Futures', 'Leverage', 'Bitcast', 'Forex', 'Spot'];
   const timeframes: Timeframe[] = ['Line', '1m', '5m', '15m', '30m', '1h', '1D'];
 
-  // Handle Main Market Tab Switch
   const handleTabChange = (tab: MarketTab) => {
     setActiveMarket(tab);
     let targetSymbol = urlSymbol;
     let targetType = urlType;
+    
+    // VIP FIX: Bitcast ko ab har type ki market allow kar di hai
     const allowedTypes: Record<MarketTab, AssetType[]> = {
       'Futures': ['crypto', 'metal', 'forex'], 
       'Leverage': ['crypto', 'metal', 'forex'],
-      'Bitcast': ['crypto'], 
+      'Bitcast': ['crypto', 'metal', 'forex'], 
       'Forex': ['forex'],    
       'Spot': ['crypto', 'metal']
     };
+    
     if (!allowedTypes[tab].includes(urlType)) {
       targetSymbol = defaultAssets[tab].symbol;
       targetType = defaultAssets[tab].type;
@@ -105,11 +108,12 @@ function VIPTradeScreenContent() {
 
   const handleSidebarSelect = (symbol: string, type: AssetType, tf?: Timeframe) => {
     let targetMarket = activeMarket;
+    
+    // VIP FIX: Bitcast ki restriction yahan se hata di hai
     if (activeMarket === 'Forex' && type !== 'forex') {
       targetMarket = 'Futures'; setActiveMarket('Futures');
-    } else if (activeMarket === 'Bitcast' && type !== 'crypto') {
-      targetMarket = 'Leverage'; setActiveMarket('Leverage');
     }
+    
     router.replace(`?market=${targetMarket}&symbol=${symbol}&type=${type}`, { scroll: false });
     if (tf) setActiveTimeframe(tf as Timeframe); 
     setIsSidebarOpen(false);
@@ -122,32 +126,85 @@ function VIPTradeScreenContent() {
      setRefreshPositionsToggle(prev => !prev);
   }
 
-
   useEffect(() => {
-    // Auth user check karo taake positions dikhayi ja sakein
+    let mounted = true;
+
     const checkUser = async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) setUserId(data.user.id);
+      if (data?.user && mounted) setUserId(data.user.id);
     };
     checkUser();
 
-    const fetchAllAssets = async () => {
+    const fetchAllAssetsAndSetupStreams = async () => {
       setIsLoading(true);
       const { data } = await supabase.from('assets').select('*').eq('is_active', true).order('live_price', { ascending: false });
-      if (data) setAllAssets(data.map(item => ({ ...item, isUp: true, liveChange: "0.00" })));
-      setIsLoading(false);
-    };
-    fetchAllAssets();
+      
+      if (data && mounted) {
+        const formattedData = data.map(item => ({ ...item, isUp: true, liveChange: "0.00" }));
+        setAllAssets(formattedData);
+        setIsLoading(false);
 
+        // Setup Binance WebSocket for Crypto
+        const cryptoAssets = data.filter(a => a.asset_type === 'crypto');
+        if (cryptoAssets.length > 0) {
+          const streams = cryptoAssets.map(a => `${a.symbol.toLowerCase()}@ticker`).join('/');
+          const wsUrl = `wss://stream.binance.com:9443/ws/${streams}`;
+          
+          wsRef.current = new WebSocket(wsUrl);
+          
+          wsRef.current.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message && message.s && message.c && message.P) {
+              const symbol = message.s;
+              const livePrice = parseFloat(message.c);
+              const priceChangePercent = parseFloat(message.P).toFixed(2);
+              
+              setAllAssets(prevAssets => prevAssets.map(asset => {
+                if (asset.symbol === symbol) {
+                  return {
+                    ...asset,
+                    live_price: livePrice,
+                    isUp: parseFloat(priceChangePercent) >= 0,
+                    liveChange: priceChangePercent
+                  };
+                }
+                return asset;
+              }));
+            }
+          };
+
+          wsRef.current.onerror = (error) => {
+            console.error("Binance WebSocket Error on Trade Screen:", error);
+          };
+        }
+      }
+    };
+    
+    fetchAllAssetsAndSetupStreams();
+
+    // Supabase Channel for Forex and Metals
     const channel = supabase.channel('public:trade_assets_all').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
       setAllAssets((currentAssets) => currentAssets.map((asset) => {
-        if (asset.symbol === payload.new.symbol) {
-          return { ...asset, live_price: payload.new.live_price, isUp: payload.new.live_price >= asset.live_price };
+        // Sirf non-crypto assets yahan se update honge
+        if (asset.symbol === payload.new.symbol && asset.asset_type !== 'crypto') {
+          const oldPrice = asset.live_price;
+          const newPrice = payload.new.live_price;
+          const diff = newPrice - oldPrice;
+          const percentChange = oldPrice > 0 ? ((diff / oldPrice) * 100).toFixed(3) : "0.00";
+
+          return { ...asset, live_price: newPrice, isUp: newPrice >= oldPrice, liveChange: diff !== 0 ? percentChange : asset.liveChange };
         }
         return asset;
       }));
     }).subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    return () => { 
+      mounted = false;
+      supabase.removeChannel(channel); 
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const activeAssetData = allAssets.find(a => a.symbol === urlSymbol) || { live_price: 0, isUp: true, liveChange: "0.00" };
@@ -271,7 +328,7 @@ function VIPTradeScreenContent() {
           ))}
         </div>
 
-        {/* 3. SCROLLABLE MIDDLE AREA (The Fix) */}
+        {/* 3. SCROLLABLE MIDDLE AREA */}
         <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col bg-[#0F172A]">
           
           {/* PRICE SECTION */}
@@ -367,7 +424,7 @@ function VIPTradeScreenContent() {
               </button>
             </div>
 
-            {/* Content area within scroll - extra bottom padding for action buttons */}
+            {/* Content area within scroll */}
             <div className="p-3 pb-10">
               {bottomActiveTab === 'positions' ? (
                 <ActivePositions 
@@ -426,7 +483,7 @@ function VIPTradeScreenContent() {
         </div>
       </div>
 
-      {/* DESKTOP RIGHT SIDEBAR (Unchanged) */}
+      {/* DESKTOP RIGHT SIDEBAR */}
       <div className="hidden lg:flex lg:w-80 lg:flex-col bg-[#0B1120] border-l border-[#1E293B]">
         <div className="flex items-center px-4 lg:px-6 border-b border-[#1E293B] shrink-0 space-x-8">
           <button 

@@ -14,36 +14,85 @@ const supabase = createBrowserClient(
 
 type AssetTab = 'Spot' | 'Contract';
 
+// Dynamic Icon Helper
+const getAssetIcon = (symbol: string) => {
+  const cleanSymbol = symbol.replace('USDT', '').replace('/', '').toLowerCase();
+  return `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${cleanSymbol}.png`;
+};
+
 export default function AssetsScreen() {
   const [activeTab, setActiveTab] = useState<AssetTab>('Spot');
   const [assetData, setAssetData] = useState<any>(null);
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchAllAssets = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user || !mounted) return;
 
-        // VIP Fix: Hum naya RPC logic call kar rahe hain jo calculations database side pe karta hai
+        // Fetch User Portfolio via RPC
         const { data, error } = await supabase.rpc('get_user_assets_v1', { 
           p_user_id: user.id 
         });
 
         if (error) throw error;
-        setAssetData(data);
+        
+        if (mounted) {
+          setAssetData(data);
+          
+          // Initial live prices set karna taake flash na ho
+          if (data?.spot_assets) {
+            const initialPrices: Record<string, number> = {};
+            data.spot_assets.forEach((coin: any) => {
+              const symbol = coin.coin_symbol || coin.symbol;
+              initialPrices[symbol] = Number(coin.live_price || 0);
+            });
+            setLivePrices(initialPrices);
+          }
+        }
 
       } catch (err) {
         console.error("RPC Fetch Error:", err);
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     };
 
     fetchAllAssets();
-    const interval = setInterval(fetchAllAssets, 10000); // 10 seconds refresh
-    return () => clearInterval(interval);
+
+    // SUPABASE REALTIME SUBSCRIPTION FOR LIVE WALLET UPDATES
+    // Ye tab hit hoga jab DB mein cron/worker price update karega
+    const channel = supabase
+      .channel('public:assets_wallet')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
+        if (mounted && payload.new.symbol) {
+          // Hum sirf wo symbol check kar rahe hain jismein base coin ka naam ho (e.g. payload.new.symbol = BTCUSDT)
+          const newPrice = payload.new.live_price;
+          setLivePrices(prev => {
+            // Humain check karna hoga ke payload wala symbol hamare user ke kis coin_symbol se match karta hai
+            // Usually DB mein 'symbol' = BTCUSDT aur wallet mein 'coin_symbol' = BTCUSDT hota hai
+            const symbolToUpdate = payload.new.symbol;
+            return {
+              ...prev,
+              [symbolToUpdate]: newPrice
+            };
+          });
+        }
+      })
+      .subscribe();
+
+    // Hum bar bar RPC call nahi karain ge warna server overloaded ho jayega
+    // Live update ab realtime subscription se hogi
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   if (isLoading && !assetData) {
@@ -72,15 +121,27 @@ export default function AssetsScreen() {
     );
   }
 
-  // --- SAFE EXTRACTION (Fixing null errors & mapping data) ---
+  // --- CALCULATING DYNAMIC WALLET TOTALS ---
   const main_balance = Number(assetData?.main_balance || 0);
-  const total_equity = Number(assetData?.total_equity || 0);
   const contract_equity = Number(assetData?.contract_equity || 0);
   const unrealized_pnl = Number(assetData?.unrealized_pnl || 0);
   const spot_assets = assetData?.spot_assets || [];
 
+  // Calculate Spot Equity dynamically based on Real-Time prices
+  let dynamic_spot_equity = 0;
+  spot_assets.forEach((coin: any) => {
+    const symbol = coin.coin_symbol || coin.symbol;
+    const balance = Number(coin.balance || 0);
+    // Use live realtime price if available, fallback to initial fetched price
+    const currentPrice = livePrices[symbol] !== undefined ? livePrices[symbol] : Number(coin.live_price || 0);
+    dynamic_spot_equity += balance * currentPrice;
+  });
+
+  // Re-calculate Total Equity (Main + Spot + Contract)
+  const total_equity = main_balance + dynamic_spot_equity + contract_equity;
+
   return (
-    <div className="flex flex-col min-h-screen bg-[#0F172A] pb-20">
+    <div className="flex flex-col min-h-screen bg-[#0F172A] pb-20 selection:bg-yellow-500 selection:text-slate-900">
       
       {/* 1. TOTAL ASSETS HEADER */}
       <div className="p-6 pt-10 bg-gradient-to-b from-slate-800/50 to-transparent">
@@ -88,9 +149,16 @@ export default function AssetsScreen() {
           <PieChart size={16} />
           <span className="text-xs font-bold uppercase tracking-widest">Total Assets (USDT)</span>
         </div>
-        <h1 className="text-4xl font-black font-mono tracking-tighter text-white mb-6">
+        
+        {/* Animated Total Equity */}
+        <motion.h1 
+          key={total_equity}
+          initial={{ color: "#FCD535" }} // Flashes yellow lightly on update
+          animate={{ color: "#FFFFFF" }}
+          className="text-4xl font-black font-mono tracking-tighter text-white mb-6"
+        >
           {total_equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </h1>
+        </motion.h1>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-slate-900/50 border border-slate-800 p-3 rounded-2xl">
@@ -114,7 +182,7 @@ export default function AssetsScreen() {
         </button>
         <button 
           onClick={() => router.push('/dashboard/withdraw')}
-          className="flex-1 h-12 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform border border-slate-700"
+          className="flex-1 h-12 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform border border-slate-700 hover:bg-slate-700"
         >
           <ArrowDownCircle size={18} /> Withdraw
         </button>
@@ -126,7 +194,7 @@ export default function AssetsScreen() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest relative ${activeTab === tab ? 'text-yellow-500' : 'text-slate-500'}`}
+            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest relative ${activeTab === tab ? 'text-yellow-500' : 'text-slate-500 hover:text-slate-400'}`}
           >
             {tab}
             {activeTab === tab && <motion.div layoutId="tabLine" className="absolute bottom-0 left-0 right-0 h-[2px] bg-yellow-500" />}
@@ -141,38 +209,64 @@ export default function AssetsScreen() {
           {activeTab === 'Spot' && (
             <motion.div key="spot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               {spot_assets.length > 0 ? spot_assets.map((coin: any, index: number) => {
-                // Live Price Fix: Agar price boht sasti ho (like SHIB), toh zyada decimals dikhayein
-                const livePrice = Number(coin.live_price || 0);
+                
+                const symbol = coin.coin_symbol || coin.symbol;
+                const iconUrl = getAssetIcon(symbol);
+                const balance = Number(coin.balance || 0);
+                
+                // VIP Fix: Realtime price from state map
+                const livePrice = livePrices[symbol] !== undefined ? livePrices[symbol] : Number(coin.live_price || 0);
                 const displayPrice = livePrice < 1 ? livePrice.toFixed(6) : livePrice.toFixed(2);
-                const valueUsdt = Number(coin.value_usdt || coin.value || 0);
+                
+                // Live Market Value Fix
+                const valueUsdt = balance * livePrice;
 
                 return (
-                  <div key={index} className="flex items-center justify-between p-4 bg-slate-900/30 border border-slate-800/50 rounded-2xl">
+                  <div key={index} className="flex items-center justify-between p-4 bg-slate-900/30 border border-slate-800/50 rounded-2xl hover:bg-slate-800/30 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-yellow-500 border border-slate-700">
-                        <Gem size={20} />
+                      <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center overflow-hidden border border-slate-700 shrink-0">
+                        {iconUrl ? (
+                           <img 
+                             src={iconUrl} 
+                             alt={symbol} 
+                             className="h-full w-full object-cover p-1.5"
+                             onError={(e) => (e.currentTarget.style.display = 'none')} 
+                           />
+                        ) : (
+                           <Gem size={20} className="text-yellow-500" />
+                        )}
                       </div>
                       <div>
-                        <p className="font-bold text-sm text-white">{coin.coin_symbol || coin.symbol}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">Price: ${displayPrice}</p>
+                        <p className="font-bold text-sm text-white truncate max-w-[100px]">{symbol.replace('USDT', '')}</p>
+                        <motion.p 
+                           key={displayPrice}
+                           initial={{ color: "#FCD535" }}
+                           animate={{ color: "#64748b" }}
+                           className="text-[10px] font-mono mt-0.5"
+                        >
+                          Price: ${displayPrice}
+                        </motion.p>
                       </div>
                     </div>
                     <div className="text-right">
-                      {/* Original Balance Logic kept intact */}
                       <p className="font-bold font-mono text-sm text-white">
-                        {Number(coin.balance).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                        {balance.toLocaleString(undefined, { maximumFractionDigits: 8 })}
                       </p>
-                      {/* Live Market Value Fix */}
-                      <p className="text-[10px] text-slate-400 font-mono">
+                      <motion.p 
+                        key={valueUsdt}
+                        initial={{ color: "#FCD535" }}
+                        animate={{ color: "#94a3b8" }}
+                        className="text-[10px] font-mono mt-0.5"
+                      >
                         ≈ ${valueUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
+                      </motion.p>
                     </div>
                   </div>
                 );
               }) : (
-                <div className="py-20 text-center opacity-20">
-                  <Search size={40} className="mx-auto mb-2 text-white"/>
-                  <p className="text-white uppercase text-[10px] font-bold tracking-widest">Empty Wallet</p>
+                <div className="py-20 text-center opacity-30 flex flex-col items-center">
+                  <Search size={40} className="mb-3 text-slate-500"/>
+                  <p className="text-slate-400 uppercase text-[10px] font-bold tracking-widest">Empty Wallet</p>
                 </div>
               )}
             </motion.div>
@@ -182,19 +276,19 @@ export default function AssetsScreen() {
             <motion.div key="contract" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-900/30 border border-slate-800/50 rounded-2xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
+                  <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700 shrink-0">
                     <Gem size={20} className="text-blue-400" />
                   </div>
                   <div>
                     <p className="font-bold text-sm text-white">Contract Equity</p>
-                    <p className="text-[10px] text-slate-500">Unrealized PnL</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Unrealized PnL</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="font-bold font-mono text-sm text-white">
-                    {contract_equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {contract_equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
                   </p>
-                  <p className={`text-[10px] font-mono font-bold ${unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <p className={`text-[10px] font-mono font-bold mt-0.5 ${unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     {unrealized_pnl >= 0 ? '+' : ''}{unrealized_pnl.toFixed(2)} USDT
                   </p>
                 </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   PiggyBank, Timer, ActivitySquare, HelpCircle, 
@@ -20,7 +20,7 @@ type MarketTab = 'crypto' | 'forex' | 'metal';
 
 // Helper: Format Price
 const formatPrice = (price: number, type: string) => {
-  if (type === 'crypto' && price < 1) return price.toFixed(4);
+  if (type === 'crypto' && price < 1) return price.toFixed(6); // VIP Fix: Better precision for small coins
   if (type === 'forex') return price.toFixed(5);
   return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
 };
@@ -63,19 +63,24 @@ export default function DashboardHome() {
   // Banner images (use the three images in public/)
   const bannerImages = ['/banner1.jpeg', '/banner2.jpeg', '/banner3.jpeg'];
 
+  // Binance WebSocket Reference
+  const wsRef = useRef<WebSocket | null>(null);
+
   // Auto-scroll logic for banners (cycle through images)
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentBanner((prev) => (prev + 1) % bannerImages.length);
     }, 4000);
     return () => clearInterval(timer);
-  }, []);
+  }, [bannerImages.length]);
 
-  // Supabase Real-time Fetch & Subscribe
+  // Data Fetching and WebSocket Setup
   useEffect(() => {
+    let mounted = true;
+
     const fetchUser = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
+      if (authUser && mounted) {
         const { data } = await supabase
           .from('users')
           .select('profile_image_url')
@@ -85,33 +90,71 @@ export default function DashboardHome() {
       }
     };
 
-    const fetchAssets = async () => {
+    const fetchAssetsAndSetupStreams = async () => {
+      // 1. Fetch from Supabase First
       const { data } = await supabase
         .from('assets')
         .select('*')
         .eq('is_active', true)
         .order('live_price', { ascending: false });
 
-      if (data) {
+      if (data && mounted) {
         const formattedData = data.map(item => ({ 
           ...item, 
           isUp: true,
           liveChange: "0.00" 
         }));
         setAssets(formattedData);
+        setIsLoading(false);
+
+        // 2. Setup Binance WebSocket for Crypto
+        const cryptoAssets = data.filter(a => a.asset_type === 'crypto');
+        if (cryptoAssets.length > 0) {
+          // Binance needs lowercase stream names
+          const streams = cryptoAssets.map(a => `${a.symbol.toLowerCase()}@ticker`).join('/');
+          const wsUrl = `wss://stream.binance.com:9443/ws/${streams}`;
+          
+          wsRef.current = new WebSocket(wsUrl);
+          
+          wsRef.current.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message && message.s && message.c && message.P) {
+              const symbol = message.s; // e.g. BTCUSDT, MKRUSDT
+              const livePrice = parseFloat(message.c);
+              const priceChangePercent = parseFloat(message.P).toFixed(2);
+              
+              setAssets(prevAssets => prevAssets.map(asset => {
+                if (asset.symbol === symbol) {
+                  return {
+                    ...asset,
+                    live_price: livePrice,
+                    isUp: parseFloat(priceChangePercent) >= 0,
+                    liveChange: priceChangePercent
+                  };
+                }
+                return asset;
+              }));
+            }
+          };
+
+          wsRef.current.onerror = (error) => {
+            console.error("Binance WebSocket Error:", error);
+          };
+        }
       }
-      setIsLoading(false);
     };
 
     fetchUser();
-    fetchAssets();
+    fetchAssetsAndSetupStreams();
 
+    // 3. Keep Supabase realtime for Forex and Metals
     const channel = supabase
       .channel('public:assets_dashboard')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
         setAssets((currentAssets) =>
           currentAssets.map((asset) => {
-            if (asset.symbol === payload.new.symbol) {
+            // Sirf Forex aur Metals ko DB se update karein
+            if (asset.symbol === payload.new.symbol && asset.asset_type !== 'crypto') {
               const oldPrice = asset.live_price;
               const newPrice = payload.new.live_price;
               const isUp = newPrice >= oldPrice;
@@ -126,7 +169,13 @@ export default function DashboardHome() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+      mounted = false;
+      supabase.removeChannel(channel); 
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const quickActions = [
@@ -148,8 +197,16 @@ export default function DashboardHome() {
     ...assets.filter(a => a.asset_type === 'metal').slice(0, 1),
   ];
 
+  // SMART ROUTING LOGIC: Asset type ke hisab se default trade tab set karna
+  const handleAssetClick = (symbol: string, type: string) => {
+    let targetMarketTab = 'Futures'; 
+    if (type === 'forex') targetMarketTab = 'Forex';
+    if (type === 'metal') targetMarketTab = 'Spot';
+    router.push(`/trade?market=${targetMarketTab}&symbol=${symbol}&type=${type}`);
+  };
+
   return (
-    <div className="pt-6 px-4 lg:px-8 pb-24 lg:pb-6 font-sans w-full relative overflow-x-hidden">
+    <div className="pt-6 px-4 lg:px-8 pb-24 lg:pb-6 font-sans w-full relative">
       
       {/* 1. Header Area */}
       <div className="flex justify-between items-center mb-6 lg:mb-8">
@@ -253,8 +310,12 @@ export default function DashboardHome() {
               {topAssets.map((asset, idx) => {
                 const iconUrl = getAssetIcon(asset.symbol, asset.asset_type);
                 return (
-                  <div key={idx} className="flex items-center justify-between p-3 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div 
+                    key={idx} 
+                    onClick={() => handleAssetClick(asset.symbol, asset.asset_type)}
+                    className="flex items-center justify-between p-3 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl cursor-pointer hover:bg-slate-800/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden">
                         {iconUrl ? (
                           <img 
@@ -268,7 +329,7 @@ export default function DashboardHome() {
                         )}
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-300 truncate min-w-0">{asset.symbol}</p>
+                        <p className="text-xs font-bold text-slate-300">{asset.symbol}</p>
                         <p className={`text-[10px] font-black ${asset.isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {asset.isUp ? <TrendingUp size={8} className="inline mr-1"/> : <TrendingDown size={8} className="inline mr-1"/>}
                           {asset.liveChange}%
@@ -297,7 +358,11 @@ export default function DashboardHome() {
               {topAssets.map((asset, idx) => {
                 const iconUrl = getAssetIcon(asset.symbol, asset.asset_type);
                 return (
-                  <div key={idx} className="flex flex-col items-center justify-center p-2 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl shadow-sm min-w-0">
+                  <div 
+                    key={idx} 
+                    onClick={() => handleAssetClick(asset.symbol, asset.asset_type)}
+                    className="flex flex-col items-center justify-center p-2 bg-[#09090b]/80 backdrop-blur-xl border border-slate-800/60 rounded-xl shadow-sm cursor-pointer hover:bg-slate-800/50 transition-colors"
+                  >
                     <div className="h-7 w-7 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden mb-1.5">
                       {iconUrl ? (
                         <img 
@@ -311,7 +376,7 @@ export default function DashboardHome() {
                       )}
                     </div>
                     
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide truncate break-words w-full text-center">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide truncate w-full text-center">
                       {asset.symbol.replace('USDT', '')}
                     </div>
                     
@@ -383,8 +448,12 @@ export default function DashboardHome() {
                 {currentTabData.map((item, idx) => {
                   const listIconUrl = getAssetIcon(item.symbol, item.asset_type);
                   return (
-                    <div key={idx} className="flex justify-between items-center p-3 lg:p-4 rounded-xl hover:bg-slate-800/50 transition-colors cursor-pointer group">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div 
+                      key={idx} 
+                      onClick={() => handleAssetClick(item.symbol, item.asset_type)}
+                      className="flex justify-between items-center p-3 lg:p-4 rounded-xl hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
                          {/* List Logo */}
                          <div className="h-8 w-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
                             {listIconUrl ? (
@@ -393,8 +462,8 @@ export default function DashboardHome() {
                               <Gem className="text-amber-500" size={14} />
                             )}
                          </div>
-                         <div className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors truncate min-w-0">
-                           {item.symbol}
+                         <div className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors">
+                            {item.symbol}
                          </div>
                       </div>
                       <div className="flex items-center gap-6">

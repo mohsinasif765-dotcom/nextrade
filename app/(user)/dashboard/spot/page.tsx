@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ChevronDown, Minus, Plus, Loader2, BarChart2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -13,6 +13,13 @@ const supabase = createBrowserClient(
 
 type OrderSide = 'Buy' | 'Sell';
 type OrderType = 'Limit' | 'Market';
+
+// Helper for dynamic decimal precision based on price
+const formatPriceDecimals = (price: number) => {
+  if (price < 1) return price.toFixed(6);
+  if (price < 10) return price.toFixed(4);
+  return price.toFixed(2);
+};
 
 // Asli Content Function (Jo Suspense ke andar chalega)
 function SpotTradeScreenContent() {
@@ -39,17 +46,30 @@ function SpotTradeScreenContent() {
   const [availableUSDT, setAvailableUSDT] = useState<number>(0);
   const [spotFeePercent, setSpotFeePercent] = useState<number>(0.1); // Default 0.1% fee
   
-  // Note: Since there is no multi-coin wallet table yet in schema, base coin balance is 0 for now.
+  // Base coin balance
   const [availableCoin, setAvailableCoin] = useState<number>(0); 
 
   const currentBalance = side === 'Buy' ? availableUSDT : availableCoin;
   const balanceSymbol = side === 'Buy' ? 'USDT' : baseCoin;
 
+  // Binance WebSocket Reference
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // VIP FIX: Market price sync ko alag rakha hai taake WebSocket bar bar disconnect na ho
   useEffect(() => {
+    if (orderType === 'Market' && assetData.price > 0) {
+      setPrice(formatPriceDecimals(assetData.price));
+    }
+  }, [assetData.price, orderType]);
+
+  useEffect(() => {
+    let mounted = true;
+    let channel: any;
+
     const fetchInitialData = async () => {
       // 1. Get Current Logged In User & Balance
       const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user) {
+      if (authData?.user && mounted) {
         const { data: userData } = await supabase
           .from('users')
           .select('main_balance')
@@ -61,76 +81,98 @@ function SpotTradeScreenContent() {
         }
       }
 
-      // 2. Fetch Admin Settings for Spot Fee (You need to add a spot_fee_percentage column in admin_settings)
+      // 2. Fetch Admin Settings for Spot Fee
       const { data: adminSettings } = await supabase
         .from('admin_settings')
         .select('*')
         .single();
 
-      if (adminSettings && adminSettings.spot_fee_percentage !== undefined) {
+      if (adminSettings && adminSettings.spot_fee_percentage !== undefined && mounted) {
         setSpotFeePercent(Number(adminSettings.spot_fee_percentage));
       }
 
-      // 3. Fetch Initial Asset Price
+      // 3. Fetch Initial Asset Price (Supabase se start karne ke liye)
       const { data: assetRes } = await supabase
         .from('assets')
         .select('live_price')
         .eq('symbol', urlSymbol)
         .single();
         
-      if (assetRes) {
-        setAssetData({ price: assetRes.live_price, change: 2.34, isUp: true }); 
-        setPrice(assetRes.live_price.toString()); 
+      if (assetRes && mounted) {
+        setAssetData(prev => ({ ...prev, price: assetRes.live_price })); 
+        if (orderType === 'Market') setPrice(formatPriceDecimals(assetRes.live_price)); 
       }
       
-      setIsDataLoaded(true);
+      if (mounted) setIsDataLoaded(true);
+
+      // 4. Setup Hybrid Streams (Binance for Crypto, Supabase for Forex/Metals)
+      if (urlType === 'crypto') {
+        const cleanSymbol = urlSymbol.replace('/', '').toLowerCase();
+        wsRef.current = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol}@ticker`);
+        
+        wsRef.current.onmessage = (event) => {
+          const payload = JSON.parse(event.data);
+          if (payload && payload.c && mounted) {
+            const newPrice = parseFloat(payload.c);
+            const changePercent = parseFloat(payload.P).toFixed(2);
+            
+            setAssetData(prev => ({
+              price: newPrice,
+              change: parseFloat(changePercent),
+              isUp: newPrice >= prev.price
+            }));
+          }
+        };
+
+        wsRef.current.onerror = (error) => {
+          console.error("Binance Spot WS Error:", error);
+        };
+      } else {
+        channel = supabase
+          .channel(`spot_trade_${urlSymbol}`)
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets', filter: `symbol=eq.${urlSymbol}` }, (payload) => {
+            if (mounted) {
+              const newPrice = payload.new.live_price;
+              setAssetData(prev => ({
+                price: newPrice,
+                change: prev.change, // Forex/Metals might need historical calculation if change is not in payload
+                isUp: newPrice >= prev.price
+              }));
+            }
+          })
+          .subscribe();
+      }
     };
 
     fetchInitialData();
 
-    // 4. Real-time Price Listener
-    const channel = supabase
-      .channel(`spot_trade_${urlSymbol}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets', filter: `symbol=eq.${urlSymbol}` }, (payload) => {
-        const newPrice = payload.new.live_price;
-        setAssetData(prev => ({
-          price: newPrice,
-          change: prev.change,
-          isUp: newPrice >= prev.price
-        }));
-        
-        if (orderType === 'Market') {
-          setPrice(newPrice.toString());
-        }
-      })
-      .subscribe();
+    return () => { 
+      mounted = false;
+      if (wsRef.current) wsRef.current.close();
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [urlSymbol, urlType]); // REMOVED orderType from dependency array to prevent WS reconnects
 
-    return () => { supabase.removeChannel(channel); };
-  }, [urlSymbol, orderType]);
-
-  // 1. Add logic to fetch coin balance inside useEffect
+  // Fetch coin balance
   useEffect(() => {
     const fetchBalances = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Fetch USDT from Users table
       const { data: userData } = await supabase.from('users').select('main_balance').eq('id', user.id).single();
       if (userData) setAvailableUSDT(Number(userData.main_balance));
 
-      // Fetch Base Coin (e.g., SOL) from Wallets table
       const { data: walletData, error } = await supabase
         .from('wallets')
         .select('balance')
         .eq('user_id', user.id)
         .eq('coin_symbol', baseCoin)
-        .maybeSingle(); // Fix: Do not use .single()
+        .maybeSingle(); 
 
       if (error) {
         console.error("Wallet Fetch Error:", error.message);
       }
 
-      // If no data, show balance as 0
       const coinBalance = walletData ? Number(walletData.balance) : 0;
       setAvailableCoin(coinBalance);
     };
@@ -138,17 +180,24 @@ function SpotTradeScreenContent() {
     if (isDataLoaded) fetchBalances();
   }, [isDataLoaded, baseCoin, side]);
 
+  // Orderbook generation logic (updated with better decimals for small coins)
   const orderBook = useMemo(() => {
     const p = assetData.price;
     if (p === 0) return { asks: [], bids: [] };
 
+    const formatOBPrice = (val: number) => {
+      if (p < 1) return val.toFixed(5);
+      if (p < 10) return val.toFixed(3);
+      return val.toFixed(2);
+    };
+
     const asks = Array.from({ length: 5 }, (_, i) => ({
-      price: (p + (5 - i) * (p * 0.00015)).toFixed(2), 
+      price: formatOBPrice(p + (5 - i) * (p * 0.00015)), 
       vol: (Math.random() * 2 + 0.1).toFixed(3)
     }));
 
     const bids = Array.from({ length: 5 }, (_, i) => ({
-      price: (p - (i + 1) * (p * 0.00015)).toFixed(2), 
+      price: formatOBPrice(p - (i + 1) * (p * 0.00015)), 
       vol: (Math.random() * 2 + 0.1).toFixed(3)
     }));
 
@@ -159,7 +208,6 @@ function SpotTradeScreenContent() {
   const qtyNum = parseFloat(quantity) || 0;
   const totalValue = (priceNum * qtyNum).toFixed(2);
   
-  // Dynamic Fee Calculation based on Admin Settings
   const estFee = (parseFloat(totalValue) * (spotFeePercent / 100)).toFixed(4); 
 
   const isLowBalance = side === 'Buy' ? parseFloat(totalValue) > availableUSDT : qtyNum > availableCoin;
@@ -181,7 +229,7 @@ function SpotTradeScreenContent() {
   const adjustValue = (setter: React.Dispatch<React.SetStateAction<string>>, current: string, operation: 'add' | 'sub', step: number) => {
     const val = parseFloat(current) || 0;
     const newVal = operation === 'add' ? val + step : Math.max(0, val - step);
-    setter(newVal.toFixed(2));
+    setter(formatPriceDecimals(newVal));
     setActivePercent(null);
   };
 
@@ -213,7 +261,7 @@ function SpotTradeScreenContent() {
         alert(`${side} Order for ${baseCoin} Placed Successfully!`);
         setQuantity("");
         setActivePercent(null);
-        // Refresh balances logic yahan call kar saktay hain
+        // Balance will auto-refresh due to the dependency trigger or you can explicitly re-fetch here
       } else {
         alert(data?.message || "Unknown error");
       }
@@ -345,7 +393,7 @@ function SpotTradeScreenContent() {
                     className="overflow-hidden"
                   >
                     <div className="flex items-center justify-between h-[44px] lg:h-[48px] bg-[#0F172A] border border-[#334155] rounded-[10px] p-[4px]">
-                      <button onClick={() => adjustValue(setPrice, price, 'sub', 10)} className="w-[36px] lg:w-[40px] h-[36px] lg:h-[40px] rounded-[8px] bg-[#1E293B] flex items-center justify-center hover:bg-[#334155] text-[#94A3B8]">
+                      <button onClick={() => adjustValue(setPrice, price, 'sub', assetData.price < 1 ? 0.0001 : 10)} className="w-[36px] lg:w-[40px] h-[36px] lg:h-[40px] rounded-[8px] bg-[#1E293B] flex items-center justify-center hover:bg-[#334155] text-[#94A3B8]">
                         <Minus size={16} />
                       </button>
                       <input 
@@ -354,7 +402,7 @@ function SpotTradeScreenContent() {
                         onChange={(e) => setPrice(e.target.value)}
                         className="flex-1 w-full bg-transparent text-center text-[#FFFFFF] text-[14px] lg:text-[16px] font-mono outline-none"
                       />
-                      <button onClick={() => adjustValue(setPrice, price, 'add', 10)} className="w-[36px] lg:w-[40px] h-[36px] lg:h-[40px] rounded-[8px] bg-[#1E293B] flex items-center justify-center hover:bg-[#334155] text-[#94A3B8]">
+                      <button onClick={() => adjustValue(setPrice, price, 'add', assetData.price < 1 ? 0.0001 : 10)} className="w-[36px] lg:w-[40px] h-[36px] lg:h-[40px] rounded-[8px] bg-[#1E293B] flex items-center justify-center hover:bg-[#334155] text-[#94A3B8]">
                         <Plus size={16} />
                       </button>
                     </div>
@@ -463,7 +511,7 @@ function SpotTradeScreenContent() {
               {/* Current Market Price in Middle */}
               <div className="my-[12px] lg:my-[16px] py-[8px] lg:py-[12px] px-[4px] border-y border-[#1E293B] flex flex-col justify-center items-center bg-slate-900/20 rounded-lg">
                 <span className={`text-[18px] lg:text-[22px] font-bold ${assetData.isUp ? 'text-[#00C087]' : 'text-[#F6465D]'}`}>
-                  {assetData.price.toFixed(2)}
+                  {formatPriceDecimals(assetData.price)}
                 </span>
                 <span className="text-[10px] lg:text-[11px] text-[#94A3B8] font-sans mt-1">Current Market Price</span>
               </div>

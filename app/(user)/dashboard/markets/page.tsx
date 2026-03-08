@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Activity, Bitcoin, DollarSign, Gem, Loader2, TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
@@ -41,7 +41,7 @@ const getAssetIcon = (symbol: string, type: string) => {
 };
 
 const formatPrice = (price: number, type: string) => {
-  if (type === 'crypto' && price < 1) return price.toFixed(4);
+  if (type === 'crypto' && price < 1) return price.toFixed(6); // VIP Fix: Better precision for small coins
   if (type === 'forex') return price.toFixed(5);
   return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
 };
@@ -52,6 +52,9 @@ export default function MarketsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assets, setAssets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Binance WebSocket Reference
+  const wsRef = useRef<WebSocket | null>(null);
 
   const tabs = [
     { id: 'crypto', label: 'Crypto', icon: Bitcoin, color: 'from-emerald-400 to-cyan-500', shadow: 'shadow-emerald-500/20' },
@@ -60,32 +63,72 @@ export default function MarketsPage() {
   ];
 
   useEffect(() => {
-    const fetchAssets = async () => {
+    let mounted = true;
+
+    const fetchAssetsAndSetupStreams = async () => {
+      // 1. Fetch initial data from Supabase
       const { data } = await supabase
         .from('assets')
         .select('*')
         .eq('is_active', true)
         .order('live_price', { ascending: false });
 
-      if (data) {
+      if (data && mounted) {
         const formattedData = data.map(item => ({ 
           ...item, 
           isUp: true,
           liveChange: "0.00" 
         }));
         setAssets(formattedData);
+        setIsLoading(false);
+
+        // 2. Setup Binance WebSocket for Crypto
+        const cryptoAssets = data.filter(a => a.asset_type === 'crypto');
+        if (cryptoAssets.length > 0) {
+          // Binance expects lowercase symbols without slashes for its streams
+          const streams = cryptoAssets.map(a => `${a.symbol.toLowerCase()}@ticker`).join('/');
+          const wsUrl = `wss://stream.binance.com:9443/ws/${streams}`;
+          
+          wsRef.current = new WebSocket(wsUrl);
+          
+          wsRef.current.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message && message.s && message.c && message.P) {
+              const symbol = message.s; // e.g. BTCUSDT
+              const livePrice = parseFloat(message.c); // Current price
+              const priceChangePercent = parseFloat(message.P).toFixed(2); // 24hr change percent
+              
+              setAssets(prevAssets => prevAssets.map(asset => {
+                if (asset.symbol === symbol) {
+                  return {
+                    ...asset,
+                    live_price: livePrice,
+                    isUp: parseFloat(priceChangePercent) >= 0,
+                    liveChange: priceChangePercent
+                  };
+                }
+                return asset;
+              }));
+            }
+          };
+
+          wsRef.current.onerror = (error) => {
+            console.error("Binance WebSocket Error:", error);
+          };
+        }
       }
-      setIsLoading(false);
     };
 
-    fetchAssets();
+    fetchAssetsAndSetupStreams();
 
+    // 3. Keep Supabase realtime for Forex and Metals
     const channel = supabase
       .channel('public:assets')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
         setAssets((currentAssets) =>
           currentAssets.map((asset) => {
-            if (asset.symbol === payload.new.symbol) {
+            // Sirf tab update karein database se agar wo crypto nahi hai (Kyunke crypto binance se aa raha hai)
+            if (asset.symbol === payload.new.symbol && asset.asset_type !== 'crypto') {
               const oldPrice = asset.live_price;
               const newPrice = payload.new.live_price;
               const isUp = newPrice >= oldPrice;
@@ -100,7 +143,13 @@ export default function MarketsPage() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+      mounted = false;
+      supabase.removeChannel(channel); 
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const currentData = assets.filter(item => 
