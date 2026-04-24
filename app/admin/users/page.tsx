@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Search, Users, Mail, Loader2, 
-  SearchX, Ban, CheckCircle, Wallet
+  SearchX, Ban, CheckCircle, Wallet, Edit2, Save, X
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 
@@ -20,6 +20,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editBalanceValue, setEditBalanceValue] = useState<string>("");
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -48,6 +50,22 @@ export default function AdminUsersPage() {
 
     if (!error) {
       setUsers(prev => prev.filter(u => u.id !== userId));
+    }
+    setActionLoading(null);
+  };
+
+  const handleUpdateBalance = async (userId: string) => {
+    if (isNaN(parseFloat(editBalanceValue))) return;
+    
+    setActionLoading(userId);
+    const { error } = await supabase.rpc('admin_update_balance', {
+      target_user_id: userId,
+      new_balance: parseFloat(editBalanceValue)
+    });
+
+    if (!error) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, main_balance: parseFloat(editBalanceValue) } : u));
+      setEditingUserId(null);
     }
     setActionLoading(null);
   };
@@ -149,11 +167,52 @@ export default function AdminUsersPage() {
 
                 {/* Bottom Actions Grid */}
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800/50 flex items-center gap-2 min-w-0">
-                    <Wallet size={14} className="text-yellow-500 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[8px] text-slate-600 font-black uppercase tracking-tighter truncate">Net Balance</p>
-                      <p className="text-xs font-bold font-mono text-emerald-400 truncate">${Number(user.main_balance).toFixed(2)}</p>
+                  <div className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800/50 flex items-center justify-between gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Wallet size={14} className="text-yellow-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[8px] text-slate-600 font-black uppercase tracking-tighter truncate">Net Balance</p>
+                        {editingUserId === user.id ? (
+                          <input 
+                            type="number"
+                            value={editBalanceValue}
+                            onChange={(e) => setEditBalanceValue(e.target.value)}
+                            className="bg-transparent border-b border-yellow-500 text-xs font-bold font-mono text-emerald-400 outline-none w-20"
+                            autoFocus
+                          />
+                        ) : (
+                          <p className="text-xs font-bold font-mono text-emerald-400 truncate">${Number(user.main_balance).toFixed(2)}</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1">
+                      {editingUserId === user.id ? (
+                        <>
+                          <button 
+                            onClick={() => handleUpdateBalance(user.id)}
+                            className="p-1 hover:bg-emerald-500/20 rounded-md text-emerald-500 transition-colors"
+                          >
+                            <Save size={14} />
+                          </button>
+                          <button 
+                            onClick={() => setEditingUserId(null)}
+                            className="p-1 hover:bg-rose-500/20 rounded-md text-rose-500 transition-colors"
+                          >
+                            <X size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          onClick={() => {
+                            setEditingUserId(user.id);
+                            setEditBalanceValue(user.main_balance.toString());
+                          }}
+                          className="p-1 hover:bg-slate-800 rounded-md text-slate-500 hover:text-yellow-500 transition-colors"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
