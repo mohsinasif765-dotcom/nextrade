@@ -57,10 +57,15 @@ export default function ActivePositions({
   };
 
   useEffect(() => {
+    if (!userId) return;
+
     fetchOpenTrades();
 
+    // Use a unique channel name per instance to avoid "cannot add postgres_changes callbacks... after subscribe()" error
+    // which happens when multiple components (e.g. mobile and desktop views) share the same channel name.
+    const uniqueId = Math.random().toString(36).substring(7);
     const tradeSub = supabase
-      .channel('live_trades_pos_terminal')
+      .channel(`live_trades_pos_terminal_${userId}_${uniqueId}`)
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
@@ -69,7 +74,9 @@ export default function ActivePositions({
       }, () => fetchOpenTrades())
       .subscribe();
 
-    return () => { supabase.removeChannel(tradeSub); };
+    return () => { 
+      supabase.removeChannel(tradeSub); 
+    };
   }, [userId, marketType, refreshTrigger]);
 
   // VIP FIX: Central Heartbeat Timer (Sirf visual update ke liye)
