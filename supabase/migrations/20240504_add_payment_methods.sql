@@ -30,7 +30,8 @@ CREATE OR REPLACE FUNCTION public.admin_save_settings(
     p_pm2_qr_url text DEFAULT '',
     p_pm3_name text DEFAULT '',
     p_pm3_address text DEFAULT '',
-    p_pm3_qr_url text DEFAULT ''
+    p_pm3_qr_url text DEFAULT '',
+    p_global_trade_control text DEFAULT 'normal'
 )
  RETURNS void
  LANGUAGE plpgsql
@@ -63,10 +64,14 @@ BEGIN
     pm3_name = p_pm3_name,
     pm3_address = p_pm3_address,
     pm3_qr_url = p_pm3_qr_url,
+    global_trade_control = p_global_trade_control,
     updated_at = NOW()
   WHERE id = 1;
 END;
 $function$;
+
+-- Add global_trade_control column if missing
+ALTER TABLE public.admin_settings ADD COLUMN IF NOT EXISTS global_trade_control text DEFAULT 'normal';
 
 -- Create storage bucket for payment methods if it doesn't exist
 -- Note: This is usually done via Supabase dashboard or API, but we can try to add a record to storage.buckets if needed.

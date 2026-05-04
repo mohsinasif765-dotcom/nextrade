@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   User, Camera, ShieldCheck, History, Lock, 
   FileText, HelpCircle, LogOut, ChevronRight, 
-  Loader2, Mail, CheckCircle, Crown, Download
+  Loader2, Mail, CheckCircle, Crown, Download,
+  Copy, Check
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
@@ -20,6 +21,7 @@ export default function ProfilePage() {
   const [updating, setUpdating] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [fullName, setFullName] = useState("");
+  const [copied, setCopied] = useState(false);
   
   // PWA Install State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -84,6 +86,13 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
+  };
+
+  const handleCopyId = () => {
+    if (!user?.id) return;
+    navigator.clipboard.writeText(user.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,6 +188,25 @@ export default function ProfilePage() {
               <Mail size={12} /> {user?.email}
             </p>
           </div>
+
+          {user?.id && (
+            <div className="mt-3 flex items-center justify-center">
+              <button 
+                onClick={handleCopyId}
+                className="group flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-lg transition-all active:scale-95"
+              >
+                <span className="text-[10px] font-mono text-slate-400 group-hover:text-slate-200 transition-colors">
+                  UID: {user.id.slice(0, 6)}
+                </span>
+                {copied ? (
+                  <Check size={10} className="text-emerald-500" />
+                ) : (
+                  <Copy size={10} className="text-slate-500 group-hover:text-brand" />
+                )}
+              </button>
+            </div>
+          )}
+
           <div className="mt-3 flex items-center justify-center">
             <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
               user?.kyc_status === 'verified' 
