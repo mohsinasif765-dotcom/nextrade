@@ -196,7 +196,7 @@ export default function ProfilePage() {
                 className="group flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-lg transition-all active:scale-95"
               >
                 <span className="text-[10px] font-mono text-slate-400 group-hover:text-slate-200 transition-colors">
-                  UID: {user.id.slice(0, 6)}
+                  ID: {user.id.slice(0, 6)}...{user.id.slice(-4)}
                 </span>
                 {copied ? (
                   <Check size={10} className="text-emerald-500" />
