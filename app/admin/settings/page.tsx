@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Settings2, ShieldAlert, Wallet, TrendingUp, 
   Save, Loader2, Globe, Percent, QrCode, 
-  Lock, Zap, AlertTriangle, ArrowLeft, Clock
+  Lock, Zap, AlertTriangle, ArrowLeft, Clock, Upload
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
