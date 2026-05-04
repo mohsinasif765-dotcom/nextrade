@@ -124,7 +124,12 @@ export default function AdminRequestsPage() {
 
                   {activeTab === 'deposits' ? (
                     <div className="space-y-3">
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Trx ID: <span className="text-slate-300">{req.trx_id}</span></p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">
+                          {req.payment_method || 'Legacy'}
+                        </span>
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Trx ID: <span className="text-slate-300">{req.trx_id}</span></p>
+                      </div>
                       {req.screenshot_url && (
                         <button 
                           onClick={() => setSelectedProof(req.screenshot_url)} 

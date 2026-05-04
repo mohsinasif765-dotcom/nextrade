@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Settings2, ShieldAlert, Wallet, TrendingUp, 
   Save, Loader2, Globe, Percent, QrCode, 
-  Lock, Zap, AlertTriangle 
+  Lock, Zap, AlertTriangle, ArrowLeft, Clock
 } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +15,7 @@ const supabase = createBrowserClient(
 );
 
 export default function AdminSettings() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [settings, setSettings] = useState<any>(null);
@@ -45,7 +47,17 @@ export default function AdminSettings() {
       p_force_win_profit_percentage: Number(settings.force_win_profit_percentage),
       p_usdt_address: settings.usdt_address || '',
       p_usdt_network: settings.usdt_network || '',
-      p_qr_code_url: settings.qr_code_url || ''
+      p_qr_code_url: settings.qr_code_url || '',
+      p_pm1_name: settings.pm1_name || '',
+      p_pm1_address: settings.pm1_address || '',
+      p_pm1_qr_url: settings.pm1_qr_url || '',
+      p_pm2_name: settings.pm2_name || '',
+      p_pm2_address: settings.pm2_address || '',
+      p_pm2_qr_url: settings.pm2_qr_url || '',
+      p_pm3_name: settings.pm3_name || '',
+      p_pm3_address: settings.pm3_address || '',
+      p_pm3_qr_url: settings.pm3_qr_url || '',
+      p_global_trade_control: settings.global_trade_control || 'normal'
     });
 
     if (!error) {
@@ -137,6 +149,47 @@ export default function AdminSettings() {
               />
             </div>
             <SettingsInput label="Max Leverage" value={settings.max_leverage_allowed} onChange={(v: string) => setSettings({...settings, max_leverage_allowed: v})} suffix="X" />
+
+            {/* Link to Dynamic Bitcast Options */}
+            <button 
+              onClick={() => router.push('/admin/settings/bitcast')}
+              className="w-full flex items-center justify-between p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl group hover:bg-yellow-500/10 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <Clock className="text-yellow-500" size={18} />
+                <div className="text-left">
+                  <p className="text-xs font-black text-slate-200 uppercase tracking-tight">Dynamic Bitcast Options</p>
+                  <p className="text-[8px] text-slate-500 font-bold uppercase">Configure trade times and profit %</p>
+                </div>
+              </div>
+              <ArrowLeft className="text-slate-700 group-hover:text-yellow-500 transition-all rotate-180" size={16} />
+            </button>
+
+            {/* Global Trade Control */}
+            <div className="bg-slate-950/50 border border-slate-800/50 p-4 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="text-rose-500" size={14} />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Global Trade Control</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {['normal', 'force_win', 'force_loss'].map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setSettings({...settings, global_trade_control: mode})}
+                    className={`py-2 px-1 rounded-xl text-[9px] font-black uppercase tracking-tighter transition-all border ${
+                      settings.global_trade_control === mode 
+                      ? 'bg-yellow-500 border-yellow-500 text-slate-950 shadow-lg shadow-yellow-500/10' 
+                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                    }`}
+                  >
+                    {mode.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[8px] text-slate-600 font-bold uppercase italic leading-tight">
+                * Note: Individual trade settings will still override this global mode.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -144,12 +197,83 @@ export default function AdminSettings() {
         <section className="bg-slate-900/40 border border-slate-800 rounded-[35px] p-6 space-y-6">
           <div className="flex items-center gap-3 text-blue-500">
             <QrCode size={18} />
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-200">Payment Gateway</h3>
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-200">Payment Gateways</h3>
           </div>
-          <div className="space-y-4">
-            <SettingsInput label="Admin USDT Address" value={settings.usdt_address} onChange={(v: string) => setSettings({...settings, usdt_address: v})} />
-            <SettingsInput label="Network Type" value={settings.usdt_network} onChange={(v: string) => setSettings({...settings, usdt_network: v})} />
-            <SettingsInput label="QR Code URL" value={settings.qr_code_url || ''} onChange={(v: string) => setSettings({...settings, qr_code_url: v})} />
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[1, 2, 3].map((num) => (
+              <div key={num} className="bg-slate-950/50 border border-slate-800/50 p-5 rounded-3xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-yellow-500">Method {num}</h4>
+                  {settings[`pm${num}_qr_url`] && (
+                    <img src={settings[`pm${num}_qr_url`]} className="w-8 h-8 rounded-lg object-cover" alt="QR" />
+                  )}
+                </div>
+                <SettingsInput 
+                  label="Display Name" 
+                  value={settings[`pm${num}_name`] || ''} 
+                  onChange={(v) => setSettings({...settings, [`pm${num}_name`]: v})} 
+                  placeholder="e.g. EasyPaisa, USDT"
+                />
+                <SettingsInput 
+                  label="Address / Details" 
+                  value={settings[`pm${num}_address`] || ''} 
+                  onChange={(v) => setSettings({...settings, [`pm${num}_address`]: v})} 
+                  placeholder="Wallet address or Account #"
+                />
+                
+                <div className="space-y-2">
+                  <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest ml-1">QR Code Image</p>
+                  <label className="flex items-center justify-center w-full h-24 bg-slate-900 border-2 border-dashed border-slate-800 rounded-2xl cursor-pointer hover:border-yellow-500/50 transition-all group overflow-hidden">
+                    {settings[`pm${num}_qr_url`] ? (
+                      <div className="relative w-full h-full">
+                        <img src={settings[`pm${num}_qr_url`]} className="w-full h-full object-contain opacity-50" alt="Preview" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                          <Upload className="text-white w-5 h-5" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <Upload className="text-slate-600 group-hover:text-yellow-500" size={16} />
+                        <span className="text-[8px] font-bold text-slate-600 uppercase">Upload Image</span>
+                      </div>
+                    )}
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const fileExt = file.name.split('.').pop();
+                          const fileName = `pm${num}_${Date.now()}.${fileExt}`;
+                          const { data, error } = await supabase.storage
+                            .from('payment-methods')
+                            .upload(fileName, file);
+                          
+                          if (error) {
+                            alert("Upload error: " + error.message);
+                          } else {
+                            const { data: { publicUrl } } = supabase.storage
+                              .from('payment-methods')
+                              .getPublicUrl(fileName);
+                            setSettings({...settings, [`pm${num}_qr_url`]: publicUrl});
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-4 border-t border-slate-800/50">
+            <p className="text-[9px] text-slate-500 font-bold uppercase mb-4 italic">Legacy USDT Settings (Optional)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <SettingsInput label="Legacy USDT Address" value={settings.usdt_address} onChange={(v: string) => setSettings({...settings, usdt_address: v})} />
+              <SettingsInput label="Legacy Network Type" value={settings.usdt_network} onChange={(v: string) => setSettings({...settings, usdt_network: v})} />
+            </div>
           </div>
         </section>
       </div>
@@ -164,9 +288,10 @@ interface InputProps {
   onChange: (v: string) => void;
   suffix?: string;
   type?: string;
+  placeholder?: string;
 }
 
-function SettingsInput({ label, value, onChange, suffix, type = "text" }: InputProps) {
+function SettingsInput({ label, value, onChange, suffix, type = "text", placeholder }: InputProps) {
   return (
     <div className="space-y-2">
       <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest ml-1">{label}</p>
@@ -175,7 +300,8 @@ function SettingsInput({ label, value, onChange, suffix, type = "text" }: InputP
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-slate-950 border border-slate-800 rounded-2xl h-12 px-4 text-xs font-bold outline-none focus:border-yellow-500/30 transition-all text-slate-200"
+          placeholder={placeholder}
+          className="w-full bg-slate-950 border border-slate-800 rounded-2xl h-12 px-4 text-xs font-bold outline-none focus:border-yellow-500/30 transition-all text-slate-200 placeholder:text-slate-700"
         />
         {suffix && (
           <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-700 uppercase">{suffix}</span>

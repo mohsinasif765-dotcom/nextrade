@@ -45,23 +45,14 @@ export default function OrderBottomSheet({
   const [leverage, setLeverage] = useState<number>(10);
   const [isLoading, setIsLoading] = useState<'long' | 'short' | null>(null);
   
-  // VIP FIX: Bitcast ke naye states
-  const [bitcastOption, setBitcastOption] = useState<number>(60); // Stores seconds
+  // VIP FIX: Dynamic Bitcast Options
+  const [bitcastOptionsList, setBitcastOptionsList] = useState<any[]>([]);
+  const [bitcastOption, setBitcastOption] = useState<number>(0);
   
   const [availableBalance, setAvailableBalance] = useState<number>(0);
   const [userId, setUserId] = useState<string | null>(null);
 
   const quickLeverages = [5, 10, 20, 50, 100];
-  
-  // VIP FIX: Client ki requirement ke mutabiq fixed time and profit
-  const bitcastOptionsList = [
-    { time: 30, label: '30s', profit: 30 },
-    { time: 60, label: '60s', profit: 40 },
-    { time: 90, label: '90s', profit: 50 },
-    { time: 120, label: '120s', profit: 60 },
-    { time: 180, label: '180s', profit: 70 },
-    { time: 300, label: '300s', profit: 80 }
-  ];
 
   const marginNum = parseFloat(margin) || 0;
   
@@ -73,7 +64,7 @@ export default function OrderBottomSheet({
   const positionSize = (marginNum * leverage).toFixed(2);
   
   // Bitcast Payout Calculation
-  const selectedBitcastOpt = bitcastOptionsList.find(o => o.time === bitcastOption) || bitcastOptionsList[1];
+  const selectedBitcastOpt = bitcastOptionsList.find(o => o.time === bitcastOption) || { profit: 0 };
   const expectedPayout = (marginNum + (marginNum * (selectedBitcastOpt.profit / 100))).toFixed(2);
   
   const isHighRisk = leverage > 20 && marketType !== 'Bitcast';
@@ -98,8 +89,27 @@ export default function OrderBottomSheet({
       };
       
       fetchUserData();
+
+      const fetchBitcastOptions = async () => {
+        const { data } = await supabase
+          .from('bitcast_options')
+          .select('*')
+          .order('time_seconds', { ascending: true });
+        
+        if (data) {
+          const formatted = data.map(d => ({
+            time: d.time_seconds,
+            label: d.label,
+            profit: d.profit_percentage
+          }));
+          setBitcastOptionsList(formatted);
+          if (formatted.length > 0) setBitcastOption(formatted[0].time);
+        }
+      };
+
+      if (marketType === 'Bitcast') fetchBitcastOptions();
     }
-  }, [isOpen, currentPrice, orderType]);
+  }, [isOpen, currentPrice, orderType, marketType]);
 
   const adjustValue = (setter: React.Dispatch<React.SetStateAction<string>>, current: string, operation: 'add' | 'sub', step: number) => {
     const val = parseFloat(getRawPrice(current)) || 0;
@@ -184,7 +194,7 @@ export default function OrderBottomSheet({
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[#0F172A]/80 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 bg-transparent z-[100]"
           />
 
           <motion.div
@@ -210,20 +220,20 @@ export default function OrderBottomSheet({
                     </div>
                   </div>
                   
-                  {/* Grid of 6 Options */}
-                  <div className="grid grid-cols-3 gap-[10px]">
+                  {/* Horizontal Scroll row */}
+                  <div className="flex gap-[10px] overflow-x-auto pb-2 hide-scrollbar">
                     {bitcastOptionsList.map((opt) => (
                       <button
                         key={opt.time}
                         onClick={() => setBitcastOption(opt.time)}
-                        className={`flex flex-col items-center justify-center h-[56px] rounded-[10px] transition-all border ${
+                        className={`flex flex-col items-center justify-center h-[56px] min-w-[80px] shrink-0 rounded-[10px] transition-all border ${
                           bitcastOption === opt.time 
                             ? "bg-[#FCD535]/10 border-[#FCD535] text-[#FCD535]" 
                             : "bg-[#1E293B] border-transparent text-[#94A3B8] hover:border-[#334155]"
                         }`}
                       >
                         <span className="text-[14px] font-bold leading-tight">{opt.label}</span>
-                        <span className="text-[10px] font-medium opacity-80">{opt.profit}% Profit</span>
+                        <span className="text-[10px] font-medium opacity-80">{opt.profit}%</span>
                       </button>
                     ))}
                   </div>
